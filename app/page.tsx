@@ -56,12 +56,15 @@ export default function Home() {
   ]
 
   const handleLogin = async (plate: string) => {
-    const testUser = testUsers.find((u) => u.plate === plate)
-    if (!testUser) {
-      setSearchError('Kjøretøyet finnes ikke')
+    if (!plate.trim()) {
+      setSearchError('Vennligst skriv inn registreringsnummeret')
       return
     }
-    setUser(testUser)
+    
+    const testUser = testUsers.find((u) => u.plate === plate)
+    const user = testUser || { plate: plate.toUpperCase(), name: `Kjøretøy ${plate.toUpperCase()}` }
+    
+    setUser(user)
     setLicensePlate(plate)
     await searchFines(plate)
     setScreen('dashboard')
