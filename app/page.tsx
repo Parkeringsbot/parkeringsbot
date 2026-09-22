@@ -477,7 +477,7 @@ export default function Home() {
     setCurrentUser(user)
     await loadUserData(user)
     // Route to account type selection instead of going directly to dashboard
-    setScreen('account-select')
+    setScreen('dashboard')
     setBankidForm({
       name: '',
       email: '',
@@ -658,45 +658,6 @@ export default function Home() {
           </h2>
 
           <form onSubmit={handleBankIDLogin}>
-            <div style={{ marginBottom: '16px' }}>
-              <input
-                type="text"
-                placeholder="Navn"
-                value={bankidForm.name}
-                onChange={(e) => setBankidForm({ ...bankidForm, name: e.target.value })}
-                style={{
-                  width: '100%', padding: '14px 16px', fontSize: '16px',
-                  border: '1.5px solid #d0d5dd', borderRadius: '8px',
-                  outline: 'none', boxSizing: 'border-box', color: '#111',
-                }}
-              />
-            </div>
-            <div style={{ marginBottom: '16px' }}>
-              <input
-                type="tel"
-                placeholder="Telefonnummer"
-                value={bankidForm.phone}
-                onChange={(e) => setBankidForm({ ...bankidForm, phone: e.target.value })}
-                style={{
-                  width: '100%', padding: '14px 16px', fontSize: '16px',
-                  border: '1.5px solid #d0d5dd', borderRadius: '8px',
-                  outline: 'none', boxSizing: 'border-box', color: '#111',
-                }}
-              />
-            </div>
-            <div style={{ marginBottom: '16px' }}>
-              <input
-                type="email"
-                placeholder="E-postadresse"
-                value={bankidForm.email}
-                onChange={(e) => setBankidForm({ ...bankidForm, email: e.target.value })}
-                style={{
-                  width: '100%', padding: '14px 16px', fontSize: '16px',
-                  border: '1.5px solid #d0d5dd', borderRadius: '8px',
-                  outline: 'none', boxSizing: 'border-box', color: '#111',
-                }}
-              />
-            </div>
             <div style={{ marginBottom: '16px' }}>
               <input
                 type="text"
