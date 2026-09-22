@@ -295,10 +295,12 @@ export default function Home() {
   // Notification preferences state
   const [notificationPrefs, setNotificationPrefs] = useState({
     email: true,
+    sms: false,
     payment: true,
     appeal: true,
   })
   const [notifEmail, setNotifEmail] = useState('')
+  const [notifPhone, setNotifPhone] = useState('')
   const [notifSaveStatus, setNotifSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
 
   // Rental fine state for saksbehandling
@@ -1689,7 +1691,8 @@ export default function Home() {
           body: JSON.stringify({
             type: 'new_fine',
             userId: currentUser.id,
-            email: notifEmail,
+            email: notificationPrefs.email ? notifEmail : undefined,
+            phone: notificationPrefs.sms ? notifPhone : undefined,
             fine: { amount: 0, location: 'Test', date: new Date().toISOString().slice(0, 10) },
           }),
         })
@@ -1769,7 +1772,7 @@ export default function Home() {
           <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '28px', maxWidth: 560 }}>
             <h2 style={{ marginTop: 0, marginBottom: '6px', color: '#003366' }}>Varslingsinnstillinger</h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '24px' }}>
-              Velg hvilke varsler du ønsker å motta på e-post.
+              Velg hvilke varsler du ønsker å motta på e-post og SMS.
             </p>
 
             {/* Status */}
@@ -1783,65 +1786,122 @@ export default function Home() {
               {anyEnabled ? '✅ Varsler er aktivert' : '⚠️ Varsler er ikke satt opp'}
             </div>
 
-            {/* Toggles */}
-            {[
-              { key: 'email' as const, label: 'E-postvarsler', desc: 'Få varsel når du mottar ny bot' },
-              { key: 'payment' as const, label: 'Betalingspåminnelse', desc: 'Påminnelse 3 dager før forfall' },
-              { key: 'appeal' as const, label: 'Ankestatus', desc: 'Oppdatering når anken din behandles' },
-            ].map(({ key, label, desc }) => (
-              <div key={key} style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '14px 0', borderBottom: '1px solid var(--border-color)',
-              }}>
-                <div>
-                  <div style={{ fontWeight: 600, marginBottom: '2px' }}>{label}</div>
-                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{desc}</div>
+            {/* Kanalvalg */}
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>Varslingskanal</div>
+              {[
+                { key: 'email' as const, icon: '📧', label: 'E-post', desc: 'Varsel sendes til din e-postadresse' },
+                { key: 'sms' as const, icon: '📱', label: 'SMS', desc: 'Varsel sendes som tekstmelding til mobilen' },
+              ].map(({ key, icon, label, desc }) => (
+                <div key={key} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '14px', marginBottom: '8px', borderRadius: '10px',
+                  border: `2px solid ${notificationPrefs[key] ? '#003366' : 'var(--border-color)'}`,
+                  background: notificationPrefs[key] ? (darkMode ? '#1a2a3a' : '#f0f4ff') : 'transparent',
+                  cursor: 'pointer', transition: 'all 0.2s',
+                }} onClick={() => setNotificationPrefs(prev => ({ ...prev, [key]: !prev[key] }))}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '22px' }}>{icon}</span>
+                    <div>
+                      <div style={{ fontWeight: 600, marginBottom: '2px' }}>{label}</div>
+                      <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{desc}</div>
+                    </div>
+                  </div>
+                  <div style={toggleStyle(notificationPrefs[key])} role="switch" aria-checked={notificationPrefs[key]}>
+                    <div style={knobStyle(notificationPrefs[key])} />
+                  </div>
                 </div>
-                <div
-                  style={toggleStyle(notificationPrefs[key])}
-                  onClick={() => setNotificationPrefs(prev => ({ ...prev, [key]: !prev[key] }))}
-                  role="switch"
-                  aria-checked={notificationPrefs[key]}
-                >
-                  <div style={knobStyle(notificationPrefs[key])} />
+              ))}
+            </div>
+
+            {/* Hva varsles om */}
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>Hva vil du varsles om?</div>
+              {[
+                { key: 'payment' as const, label: 'Ny parkeringsbot', desc: 'Øyeblikkelig varsel når du mottar en bot' },
+                { key: 'appeal' as const, label: 'Forfall og påminnelser', desc: 'Påminnelse 3 dager før betalingsfristen' },
+              ].map(({ key, label, desc }) => (
+                <div key={key} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '14px 0', borderBottom: '1px solid var(--border-color)',
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 600, marginBottom: '2px' }}>{label}</div>
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{desc}</div>
+                  </div>
+                  <div
+                    style={toggleStyle(notificationPrefs[key])}
+                    onClick={() => setNotificationPrefs(prev => ({ ...prev, [key]: !prev[key] }))}
+                    role="switch"
+                    aria-checked={notificationPrefs[key]}
+                  >
+                    <div style={knobStyle(notificationPrefs[key])} />
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
 
             {/* E-post */}
-            <div style={{ marginTop: '20px' }}>
-              <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px' }}>E-postadresse</label>
-              <input
-                type="email"
-                value={notifEmail}
-                onChange={(e) => setNotifEmail(e.target.value)}
-                style={{
-                  width: '100%', padding: '10px 14px', borderRadius: '8px',
-                  border: '1px solid var(--border-color)', background: 'var(--card-bg)',
-                  color: 'var(--text-primary)', fontSize: '15px', boxSizing: 'border-box',
-                }}
-              />
-            </div>
+            {notificationPrefs.email && (
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px' }}>📧 E-postadresse</label>
+                <input
+                  type="email"
+                  value={notifEmail}
+                  placeholder="din@epost.no"
+                  onChange={(e) => setNotifEmail(e.target.value)}
+                  style={{
+                    width: '100%', padding: '10px 14px', borderRadius: '8px',
+                    border: '1px solid var(--border-color)', background: 'var(--card-bg)',
+                    color: 'var(--text-primary)', fontSize: '15px', boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+            )}
+
+            {/* SMS / Telefon */}
+            {notificationPrefs.sms && (
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px' }}>📱 Mobilnummer</label>
+                <input
+                  type="tel"
+                  value={notifPhone}
+                  placeholder="+47 900 00 000"
+                  onChange={(e) => setNotifPhone(e.target.value)}
+                  style={{
+                    width: '100%', padding: '10px 14px', borderRadius: '8px',
+                    border: '1px solid var(--border-color)', background: 'var(--card-bg)',
+                    color: 'var(--text-primary)', fontSize: '15px', boxSizing: 'border-box',
+                  }}
+                />
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px' }}>
+                  Inkluder landkode, f.eks. +47 for Norge
+                </p>
+              </div>
+            )}
 
             {/* Lagre */}
             <button
               onClick={handleSaveNotifications}
               disabled={notifSaveStatus === 'saving'}
               style={{
-                marginTop: '20px', padding: '12px 28px',
+                marginTop: '8px', padding: '12px 28px',
                 background: notifSaveStatus === 'saving' ? '#ccc' : '#003366',
                 color: 'white', border: 'none', borderRadius: '8px',
                 fontWeight: 700, fontSize: '15px', cursor: notifSaveStatus === 'saving' ? 'not-allowed' : 'pointer',
+                width: '100%',
               }}
             >
-              {notifSaveStatus === 'saving' ? 'Lagrer...' : 'Lagre varsler'}
+              {notifSaveStatus === 'saving' ? 'Lagrer...' : 'Lagre og test varsler'}
             </button>
 
             {notifSaveStatus === 'saved' && (
-              <p style={{ marginTop: '12px', color: '#065f46', fontWeight: 600 }}>✅ Varsler lagret og test-e-post sendt!</p>
+              <p style={{ marginTop: '12px', color: '#065f46', fontWeight: 600 }}>
+                ✅ Lagret! {notificationPrefs.email && notifEmail ? 'Test-e-post sendt.' : ''} {notificationPrefs.sms && notifPhone ? 'Test-SMS sendt.' : ''}
+              </p>
             )}
             {notifSaveStatus === 'error' && (
-              <p style={{ marginTop: '12px', color: '#dc2626', fontWeight: 600 }}>⚠️ Kunne ikke lagre — sjekk e-post og prøv igjen.</p>
+              <p style={{ marginTop: '12px', color: '#dc2626', fontWeight: 600 }}>⚠️ Kunne ikke lagre — sjekk kontaktinfo og prøv igjen.</p>
             )}
           </div>
         </div>
