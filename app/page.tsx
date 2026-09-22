@@ -454,7 +454,7 @@ export default function Home() {
     e.preventDefault()
 
     if (bankidForm.isNewUser) {
-      if (!bankidForm.firstName || !bankidForm.lastName || !bankidForm.email || !bankidForm.phone || !bankidForm.licensePlate) {
+      if (!bankidForm.firstName || !bankidForm.email || !bankidForm.phone || !bankidForm.licensePlate) {
         setSearchError('Alle felt må fylles ut')
         return
       }
@@ -465,9 +465,7 @@ export default function Home() {
       }
     }
 
-    const fullName = bankidForm.isNewUser
-      ? `${bankidForm.firstName} ${bankidForm.lastName}`
-      : 'Bruker'
+    const fullName = bankidForm.isNewUser ? bankidForm.firstName : 'Bruker'
 
     const user: User = {
       id: Math.random().toString(36).substr(2, 9),
@@ -670,20 +668,13 @@ export default function Home() {
           {bankidForm.isNewUser ? (
             <form onSubmit={handleBankIDLogin}>
               {/* Navn */}
-              <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ marginBottom: '16px' }}>
                 <input
                   type="text"
-                  placeholder="Fornavn"
+                  placeholder="Fornavn og etternavn"
                   value={bankidForm.firstName}
                   onChange={(e) => setBankidForm({ ...bankidForm, firstName: e.target.value })}
-                  style={{ flex: 1, padding: '14px 16px', fontSize: '16px', border: '1.5px solid #d0d5dd', borderRadius: '8px', outline: 'none', boxSizing: 'border-box', color: '#111' }}
-                />
-                <input
-                  type="text"
-                  placeholder="Etternavn"
-                  value={bankidForm.lastName}
-                  onChange={(e) => setBankidForm({ ...bankidForm, lastName: e.target.value })}
-                  style={{ flex: 1, padding: '14px 16px', fontSize: '16px', border: '1.5px solid #d0d5dd', borderRadius: '8px', outline: 'none', boxSizing: 'border-box', color: '#111' }}
+                  style={{ width: '100%', padding: '14px 16px', fontSize: '16px', border: '1.5px solid #d0d5dd', borderRadius: '8px', outline: 'none', boxSizing: 'border-box', color: '#111' }}
                 />
               </div>
               <div style={{ marginBottom: '16px' }}>
