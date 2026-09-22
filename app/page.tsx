@@ -650,7 +650,7 @@ export default function Home() {
                 cursor: 'pointer',
               }}
             >
-              {darkMode ? '☀️' : '🌙'}
+              {darkMode ? 'Hell lys' : 'Mørk modus'}
             </button>
           </div>
 
@@ -677,7 +677,6 @@ export default function Home() {
                 fontSize: '20px',
                 letterSpacing: '0.5px',
               }}>
-                <span style={{ fontSize: '22px' }}>🔒</span>
                 BankID
               </div>
               <p style={{ color: '#555', marginTop: '10px', fontSize: '14px' }}>
@@ -774,7 +773,7 @@ export default function Home() {
                   letterSpacing: '0.3px',
                 }}
               >
-                {language === 'no' ? '🔒 Logg inn med BankID' : '🔒 Log in with BankID'}
+                {language === 'no' ? 'Logg inn med BankID' : 'Log in with BankID'}
               </button>
             </form>
 
@@ -820,9 +819,9 @@ export default function Home() {
     })
 
     const options: { type: AccountType; icon: string; title: string; desc: string }[] = [
-      { type: 'private', icon: '🚗', title: 'Privat', desc: 'For privatpersoner med egne biler og egne bøter.' },
-      { type: 'company', icon: '🏢', title: 'Bedrift', desc: 'For firmaer med firmabiler og ansatte. Håndter flåtebøter, ansattkoblinger og felles betaling.' },
-      { type: 'rental', icon: '🔑', title: 'Bilutleie', desc: 'For bilutleiere, bildelingsselskaper og leasingfirmaer. Koble bøter til leieavtaler og krev videre til leietaker.' },
+      { type: 'private', icon: '', title: 'Privat', desc: 'For privatpersoner med egne biler og egne bøter.' },
+      { type: 'company', icon: '', title: 'Bedrift', desc: 'For firmaer med firmabiler og ansatte. Håndter flåtebøter, ansattkoblinger og felles betaling.' },
+      { type: 'rental', icon: '', title: 'Bilutleie', desc: 'For bilutleiere, bildelingsselskaper og leasingfirmaer. Koble bøter til leieavtaler og krev videre til leietaker.' },
     ]
 
     return (
@@ -841,7 +840,6 @@ export default function Home() {
                 onClick={() => setAccountType(type)}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                  <span style={{ fontSize: '28px' }}>{icon}</span>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: '16px', color: '#003366', marginBottom: '4px' }}>{title}</div>
                     <div style={{ fontSize: '13px', color: '#555' }}>{desc}</div>
@@ -1025,7 +1023,6 @@ export default function Home() {
                     background: '#fff', border: '1px solid #e8e8e8', borderRadius: '10px',
                     padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px',
                   }}>
-                    <span style={{ fontSize: '28px' }}>🚗</span>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 700 }}>{v.licensePlate}</div>
                       <div style={{ fontSize: '13px', color: '#666' }}>{v.year} {v.make} {v.model}</div>
@@ -1217,8 +1214,8 @@ export default function Home() {
                       )}
                     </div>
                     <div style={{ fontSize: '14px', color: '#555', borderTop: '1px solid #f0f0f0', paddingTop: '10px', marginTop: '4px' }}>
-                      <span style={{ marginRight: '20px' }}>🚗 {ra.vehicleLicensePlate}</span>
-                      <span>📅 {ra.startDate} → {ra.endDate}</span>
+                      <span style={{ marginRight: '20px' }}>{ra.vehicleLicensePlate}</span>
+                      <span>{ra.startDate} → {ra.endDate}</span>
                     </div>
                   </div>
                 ))}
@@ -1236,7 +1233,6 @@ export default function Home() {
                     background: '#fff', border: '1px solid #e8e8e8', borderRadius: '10px',
                     padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px',
                   }}>
-                    <span style={{ fontSize: '28px' }}>🚗</span>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 700 }}>{v.licensePlate}</div>
                       <div style={{ fontSize: '13px', color: '#666' }}>{v.year} {v.make} {v.model}</div>
@@ -1275,7 +1271,7 @@ export default function Home() {
                       padding: '16px', marginBottom: '20px',
                     }}>
                       <div style={{ fontWeight: 600, color: '#1e40af', marginBottom: '4px' }}>
-                        ✅ Leietaker identifisert automatisk
+                        Leietaker identifisert automatisk
                       </div>
                       <div style={{ fontSize: '14px', color: '#1d4ed8' }}>
                         {selectedRentalFine.matchedRenterName} hadde bilen på bot-datoen
@@ -1287,7 +1283,7 @@ export default function Home() {
                       background: '#fef9c3', border: '1px solid #fde68a', borderRadius: '8px',
                       padding: '16px', marginBottom: '20px',
                     }}>
-                      <div style={{ fontWeight: 600, color: '#92400e' }}>⚠️ Ingen aktiv leieavtale funnet for denne datoen</div>
+                      <div style={{ fontWeight: 600, color: '#92400e' }}>Ingen aktiv leieavtale funnet for denne datoen</div>
                     </div>
                   )}
 
@@ -1476,7 +1472,7 @@ export default function Home() {
                 cursor: 'pointer',
               }}
             >
-              🔔 Varsler
+              Varsler
             </button>
           </div>
 
@@ -1604,10 +1600,10 @@ export default function Home() {
                   </p>
 
                   {[
-                    { label: '📷 Bilde av skilt', key: 'skilt' },
-                    { label: '📷 Bilde av bilen', key: 'bil' },
-                    { label: '📷 Bilde av parkeringsplassen', key: 'plass' },
-                    { label: '📎 Andre dokumenter', key: 'annet' },
+                    { label: 'Bilde av skilt', key: 'skilt' },
+                    { label: 'Bilde av bilen', key: 'bil' },
+                    { label: 'Bilde av parkeringsplassen', key: 'plass' },
+                    { label: 'Andre dokumenter', key: 'annet' },
                   ].map(({ label, key }) => {
                     const uploaded = appealFiles.includes(key)
                     return (
@@ -1664,7 +1660,7 @@ export default function Home() {
 
           {appealStep === 3 && (
             <div className={styles.fineCard} style={{ marginTop: '20px', textAlign: 'center', padding: '30px' }}>
-              <div style={{ fontSize: '48px', marginBottom: '12px' }}>✅</div>
+              <div style={{ marginBottom: '12px' }}></div>
               <h3 style={{ marginBottom: '8px' }}>Klage sendt!</h3>
               <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
                 Din klage er mottatt og vil bli behandlet innen 5 virkedager. Du får svar på e-post.
@@ -1736,7 +1732,7 @@ export default function Home() {
         <div className={styles.dashboard}>
           <div className={styles.header}>
             <div>
-              <h1>🔔 Varsler</h1>
+              <h1>Varsler</h1>
               <p className={styles.subtitle}>{currentUser.name}</p>
             </div>
             <button className={styles.btnLogout} onClick={handleLogout}>{t.logout}</button>
@@ -1748,7 +1744,7 @@ export default function Home() {
                 dashboard: t.myFines,
                 history: t.paymentHistory,
                 appeals: t.appeals,
-                notifications: '🔔 Varsler',
+                notifications: 'Varsler',
               }
               return (
                 <button
@@ -1783,15 +1779,15 @@ export default function Home() {
               color: anyEnabled ? '#065f46' : '#92400e',
               fontSize: '13px', fontWeight: 600,
             }}>
-              {anyEnabled ? '✅ Varsler er aktivert' : '⚠️ Varsler er ikke satt opp'}
+              {anyEnabled ? 'Varsler er aktivert' : 'Varsler er ikke satt opp'}
             </div>
 
             {/* Kanalvalg */}
             <div style={{ marginBottom: '20px' }}>
               <div style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>Varslingskanal</div>
               {[
-                { key: 'email' as const, icon: '📧', label: 'E-post', desc: 'Varsel sendes til din e-postadresse' },
-                { key: 'sms' as const, icon: '📱', label: 'SMS', desc: 'Varsel sendes som tekstmelding til mobilen' },
+                { key: 'email' as const, icon: '', label: 'E-post', desc: 'Varsel sendes til din e-postadresse' },
+                { key: 'sms' as const, icon: '', label: 'SMS', desc: 'Varsel sendes som tekstmelding til mobilen' },
               ].map(({ key, icon, label, desc }) => (
                 <div key={key} style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -1801,7 +1797,6 @@ export default function Home() {
                   cursor: 'pointer', transition: 'all 0.2s',
                 }} onClick={() => setNotificationPrefs(prev => ({ ...prev, [key]: !prev[key] }))}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '22px' }}>{icon}</span>
                     <div>
                       <div style={{ fontWeight: 600, marginBottom: '2px' }}>{label}</div>
                       <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{desc}</div>
@@ -1844,7 +1839,7 @@ export default function Home() {
             {/* E-post */}
             {notificationPrefs.email && (
               <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px' }}>📧 E-postadresse</label>
+                <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px' }}>E-postadresse</label>
                 <input
                   type="email"
                   value={notifEmail}
@@ -1862,7 +1857,7 @@ export default function Home() {
             {/* SMS / Telefon */}
             {notificationPrefs.sms && (
               <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px' }}>📱 Mobilnummer</label>
+                <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px' }}>Mobilnummer</label>
                 <input
                   type="tel"
                   value={notifPhone}
@@ -1897,11 +1892,11 @@ export default function Home() {
 
             {notifSaveStatus === 'saved' && (
               <p style={{ marginTop: '12px', color: '#065f46', fontWeight: 600 }}>
-                ✅ Lagret! {notificationPrefs.email && notifEmail ? 'Test-e-post sendt.' : ''} {notificationPrefs.sms && notifPhone ? 'Test-SMS sendt.' : ''}
+                Lagret! {notificationPrefs.email && notifEmail ? 'Test-e-post sendt.' : ''} {notificationPrefs.sms && notifPhone ? 'Test-SMS sendt.' : ''}
               </p>
             )}
             {notifSaveStatus === 'error' && (
-              <p style={{ marginTop: '12px', color: '#dc2626', fontWeight: 600 }}>⚠️ Kunne ikke lagre — sjekk kontaktinfo og prøv igjen.</p>
+              <p style={{ marginTop: '12px', color: '#dc2626', fontWeight: 600 }}>Kunne ikke lagre — sjekk kontaktinfo og prøv igjen.</p>
             )}
           </div>
         </div>
