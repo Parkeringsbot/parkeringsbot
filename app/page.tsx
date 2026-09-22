@@ -623,181 +623,177 @@ export default function Home() {
 
   if (screen === 'bankid') {
     return (
-      <div className={`${styles.container} ${darkMode ? styles.darkMode : ''}`}>
-        <div className={styles.loginBox}>
-          <div style={{ marginBottom: '20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-            <button
-              onClick={() => setLanguage(language === 'no' ? 'en' : 'no')}
-              style={{
-                padding: '8px 16px',
-                background: 'var(--accent)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-              }}
-            >
-              {language === 'no' ? 'English' : 'Norsk'}
-            </button>
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              style={{
-                padding: '8px 16px',
-                background: 'var(--accent)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-              }}
-            >
-              {darkMode ? 'Hell lys' : 'Mørk modus'}
-            </button>
-          </div>
-
-          <h1>{t.title}</h1>
-          <p className={styles.tagline}>{t.subtitle}</p>
-
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#0a1628',
+        padding: '20px',
+      }}>
+        {/* Logo */}
+        <div style={{ marginBottom: '32px', textAlign: 'center' }}>
           <div style={{
-            background: darkMode ? '#2a2a2a' : '#fff',
-            border: darkMode ? '2px solid #444' : '2px solid #e8e8e8',
-            borderRadius: '12px',
-            padding: '32px',
-            marginBottom: '16px',
+            fontSize: '28px',
+            fontWeight: 800,
+            color: 'white',
+            letterSpacing: '-0.5px',
           }}>
-            <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-              <div style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '10px',
-                background: '#003087',
-                color: 'white',
-                padding: '10px 20px',
-                borderRadius: '8px',
-                fontWeight: 700,
-                fontSize: '20px',
-                letterSpacing: '0.5px',
-              }}>
-                BankID
-              </div>
-              <p style={{ color: '#555', marginTop: '10px', fontSize: '14px' }}>
-                {language === 'no' ? 'Logg inn sikkert med BankID' : 'Sign in securely with BankID'}
-              </p>
+            Parkeringsbot
+          </div>
+        </div>
+
+        {/* Card */}
+        <div style={{
+          background: 'white',
+          borderRadius: '16px',
+          padding: '48px 40px',
+          width: '100%',
+          maxWidth: '440px',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
+        }}>
+          <h2 style={{ fontSize: '28px', fontWeight: 700, marginBottom: '32px', textAlign: 'center', color: '#111' }}>
+            Velkommen
+          </h2>
+
+          <form onSubmit={handleBankIDLogin}>
+            <div style={{ marginBottom: '16px' }}>
+              <input
+                type="text"
+                placeholder="Navn"
+                value={bankidForm.name}
+                onChange={(e) => setBankidForm({ ...bankidForm, name: e.target.value })}
+                style={{
+                  width: '100%', padding: '14px 16px', fontSize: '16px',
+                  border: '1.5px solid #d0d5dd', borderRadius: '8px',
+                  outline: 'none', boxSizing: 'border-box', color: '#111',
+                }}
+              />
+            </div>
+            <div style={{ marginBottom: '16px' }}>
+              <input
+                type="tel"
+                placeholder="Telefonnummer"
+                value={bankidForm.phone}
+                onChange={(e) => setBankidForm({ ...bankidForm, phone: e.target.value })}
+                style={{
+                  width: '100%', padding: '14px 16px', fontSize: '16px',
+                  border: '1.5px solid #d0d5dd', borderRadius: '8px',
+                  outline: 'none', boxSizing: 'border-box', color: '#111',
+                }}
+              />
+            </div>
+            <div style={{ marginBottom: '16px' }}>
+              <input
+                type="email"
+                placeholder="E-postadresse"
+                value={bankidForm.email}
+                onChange={(e) => setBankidForm({ ...bankidForm, email: e.target.value })}
+                style={{
+                  width: '100%', padding: '14px 16px', fontSize: '16px',
+                  border: '1.5px solid #d0d5dd', borderRadius: '8px',
+                  outline: 'none', boxSizing: 'border-box', color: '#111',
+                }}
+              />
+            </div>
+            <div style={{ marginBottom: '16px' }}>
+              <input
+                type="text"
+                placeholder="Registreringsnummer (f.eks. AB12345)"
+                value={bankidForm.licensePlate}
+                onChange={(e) => setBankidForm({ ...bankidForm, licensePlate: e.target.value.toUpperCase() })}
+                style={{
+                  width: '100%', padding: '14px 16px', fontSize: '16px',
+                  border: '1.5px solid #d0d5dd', borderRadius: '8px',
+                  outline: 'none', boxSizing: 'border-box', color: '#111',
+                }}
+              />
+            </div>
+            <div style={{ marginBottom: '24px' }}>
+              <input
+                type="password"
+                placeholder="BankID-kode"
+                value={bankidForm.password}
+                onChange={(e) => setBankidForm({ ...bankidForm, password: e.target.value })}
+                style={{
+                  width: '100%', padding: '14px 16px', fontSize: '16px',
+                  border: '1.5px solid #d0d5dd', borderRadius: '8px',
+                  outline: 'none', boxSizing: 'border-box', color: '#111',
+                }}
+              />
             </div>
 
-            <form onSubmit={handleBankIDLogin}>
-              <div className={styles.formGroup}>
-                <label>{t.name}</label>
-                <input
-                  type="text"
-                  placeholder="f.eks. Ola Nordmann"
-                  value={bankidForm.name}
-                  onChange={(e) => setBankidForm({ ...bankidForm, name: e.target.value })}
-                />
-              </div>
+            <button
+              type="submit"
+              style={{
+                width: '100%', padding: '15px', background: '#2563eb',
+                color: 'white', border: 'none', borderRadius: '8px',
+                fontSize: '16px', fontWeight: 700, cursor: 'pointer',
+                letterSpacing: '0.2px',
+              }}
+            >
+              Fortsett
+            </button>
+          </form>
 
-              <div className={styles.formGroup}>
-                <label>{t.phone}</label>
-                <input
-                  type="tel"
-                  placeholder="98765432"
-                  value={bankidForm.phone}
-                  onChange={(e) => setBankidForm({ ...bankidForm, phone: e.target.value })}
-                />
-              </div>
+          {searchError && (
+            <p style={{ marginTop: '16px', color: '#dc2626', fontSize: '14px', textAlign: 'center' }}>
+              {searchError}
+            </p>
+          )}
 
-              <div className={styles.formGroup}>
-                <label>{t.email}</label>
-                <input
-                  type="email"
-                  placeholder="ola@example.com"
-                  value={bankidForm.email}
-                  onChange={(e) => setBankidForm({ ...bankidForm, email: e.target.value })}
-                />
-              </div>
-
-              <div className={styles.formGroup}>
-                <label>{t.licensePlate}</label>
-                <input
-                  type="text"
-                  placeholder="AB12345"
-                  value={bankidForm.licensePlate}
-                  onChange={(e) => setBankidForm({ ...bankidForm, licensePlate: e.target.value.toUpperCase() })}
-                />
-              </div>
-
-              <div className={styles.formGroup}>
-                <label>{t.password}</label>
-                <input
-                  type="password"
-                  placeholder="BankID-kode"
-                  value={bankidForm.password}
-                  onChange={(e) => setBankidForm({ ...bankidForm, password: e.target.value })}
-                />
-              </div>
-
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', color: '#555' }}>
-                  <input
-                    type="checkbox"
-                    checked={bankidForm.isNewUser}
-                    onChange={(e) => setBankidForm({ ...bankidForm, isNewUser: e.target.checked })}
-                  />
-                  {t.register}
-                </label>
-              </div>
-
-              {bankidForm.isNewUser && (
-                <div className={styles.formGroup}>
-                  <label>{t.confirmPassword}</label>
-                  <input
-                    type="password"
-                    placeholder="Bekreft passord"
-                    value={bankidForm.confirmPassword}
-                    onChange={(e) => setBankidForm({ ...bankidForm, confirmPassword: e.target.value })}
-                  />
-                </div>
-              )}
-
-              <button
-                type="submit"
-                style={{
-                  width: '100%',
-                  padding: '14px',
-                  background: '#003087',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontSize: '16px',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  letterSpacing: '0.3px',
-                }}
-              >
-                {language === 'no' ? 'Logg inn med BankID' : 'Log in with BankID'}
-              </button>
-            </form>
-
-            {searchError && <p className={styles.error}>{searchError}</p>}
+          <div style={{ textAlign: 'center', margin: '20px 0', color: '#999', fontSize: '14px' }}>
+            eller
           </div>
 
-          <details style={{ marginTop: '8px' }}>
-            <summary style={{ cursor: 'pointer', color: '#aaa', fontSize: '13px', textAlign: 'center', listStyle: 'none' }}>
+          <button
+            onClick={() => setBankidForm({ ...bankidForm, isNewUser: true })}
+            style={{
+              width: '100%', padding: '15px', background: 'transparent',
+              color: '#2563eb', border: 'none', borderRadius: '8px',
+              fontSize: '16px', fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            Opprett konto gratis
+          </button>
+        </div>
+
+        {/* Admin hidden */}
+        <div style={{ marginTop: '32px' }}>
+          <details>
+            <summary style={{ cursor: 'pointer', color: '#ffffff44', fontSize: '12px', textAlign: 'center', listStyle: 'none' }}>
               Admin
             </summary>
-            <div style={{ marginTop: '12px', padding: '16px', background: '#f9f9f9', borderRadius: '8px' }}>
-              <div className={styles.formGroup}>
-                <input
-                  type="password"
-                  placeholder="Admin-passord"
-                  value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                />
-              </div>
-              <button className={styles.btnSecondary} onClick={handleAdminLogin} style={{ width: '100%' }}>
-                {t.admin}
+            <div style={{ marginTop: '12px', padding: '16px', background: '#ffffff11', borderRadius: '8px' }}>
+              <input
+                type="password"
+                placeholder="Admin-passord"
+                value={adminPassword}
+                onChange={(e) => setAdminPassword(e.target.value)}
+                style={{
+                  width: '100%', padding: '12px', fontSize: '14px', marginBottom: '8px',
+                  border: '1px solid #444', borderRadius: '6px', background: '#1a2a3a',
+                  color: 'white', boxSizing: 'border-box',
+                }}
+              />
+              <button
+                onClick={handleAdminLogin}
+                style={{
+                  width: '100%', padding: '10px', background: '#2563eb',
+                  color: 'white', border: 'none', borderRadius: '6px',
+                  fontSize: '14px', cursor: 'pointer',
+                }}
+              >
+                Admin-innlogging
               </button>
             </div>
           </details>
+        </div>
+
+        {/* Footer */}
+        <div style={{ marginTop: '32px', fontSize: '12px', color: '#ffffff44', textAlign: 'center' }}>
+          Vilkar | Personvern
         </div>
       </div>
     )
@@ -820,8 +816,6 @@ export default function Home() {
 
     const options: { type: AccountType; icon: string; title: string; desc: string }[] = [
       { type: 'private', icon: '', title: 'Privat', desc: 'For privatpersoner med egne biler og egne bøter.' },
-      { type: 'company', icon: '', title: 'Bedrift', desc: 'For firmaer med firmabiler og ansatte. Håndter flåtebøter, ansattkoblinger og felles betaling.' },
-      { type: 'rental', icon: '', title: 'Bilutleie', desc: 'For bilutleiere, bildelingsselskaper og leasingfirmaer. Koble bøter til leieavtaler og krev videre til leietaker.' },
     ]
 
     return (
@@ -853,23 +847,18 @@ export default function Home() {
           </div>
 
           <button
-            disabled={!accountType}
-            onClick={() => {
-              if (accountType === 'private') setScreen('dashboard')
-              else if (accountType === 'company') setScreen('b2b-company')
-              else if (accountType === 'rental') setScreen('b2b-rental')
-            }}
+            onClick={() => setScreen('dashboard')}
             style={{
               width: '100%',
               marginTop: '10px',
               padding: '14px',
-              background: accountType ? 'var(--accent)' : '#ccc',
+              background: 'var(--accent)',
               color: 'white',
               border: 'none',
               borderRadius: '8px',
               fontSize: '16px',
               fontWeight: 700,
-              cursor: accountType ? 'pointer' : 'not-allowed',
+              cursor: 'pointer',
             }}
           >
             Fortsett →
