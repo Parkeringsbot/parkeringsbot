@@ -71,8 +71,16 @@ export default function Home() {
   }
 
   const searchFines = async (plate: string) => {
+    // First try demo fines (for testing purposes)
+    const demoResult = demoFines.filter((fine) => fine.license_plate === plate.toUpperCase())
+    if (demoResult.length > 0) {
+      setFines(demoResult)
+      setSearchError('')
+      return
+    }
+
     if (!isSupabaseConfigured || !supabase) {
-      setFines(demoFines.filter((fine) => fine.license_plate === plate.toUpperCase()))
+      setFines([])
       setSearchError('')
       return
     }
