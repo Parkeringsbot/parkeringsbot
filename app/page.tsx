@@ -18,6 +18,7 @@ interface PaymentRecord {
   amount: number
   status: string
   paid_at: string
+  transaction_id?: string
 }
 
 interface Notification {
