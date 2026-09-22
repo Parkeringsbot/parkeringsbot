@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { isSupabaseConfigured, supabase, ParkingFine } from '@/lib/supabase'
 import styles from './page.module.css'
 
@@ -40,8 +40,241 @@ interface Appeal {
   created_at: string
 }
 
+// B2B interfaces
+interface Employee {
+  id: string
+  name: string
+  email: string
+  phone: string
+  licensePlates: string[]
+  fineCount: number
+}
+
+interface CompanyVehicle {
+  id: string
+  licensePlate: string
+  make: string
+  model: string
+  year: number
+  assignedTo: string | null
+  fineCount: number
+}
+
+interface CompanyFine {
+  id: number
+  licensePlate: string
+  amount: number
+  date: string
+  time: string
+  location: string
+  municipality: string
+  paid: boolean
+  driverName: string
+  employeeId: string
+}
+
+interface RentalAgreement {
+  id: string
+  vehicleLicensePlate: string
+  renterName: string
+  renterEmail: string
+  renterPhone: string
+  startDate: string
+  endDate: string
+  status: 'active' | 'completed' | 'upcoming'
+}
+
+interface RentalVehicle {
+  id: string
+  licensePlate: string
+  make: string
+  model: string
+  year: number
+  status: 'ledig' | 'utleid' | 'service'
+}
+
+type RentalFineStatus = 'Ny' | 'Kobling funnet' | 'Behandles' | 'Betalt' | 'Krevd videre'
+
+interface RentalFine {
+  id: number
+  licensePlate: string
+  amount: number
+  date: string
+  time: string
+  location: string
+  municipality: string
+  status: RentalFineStatus
+  matchedRenterName: string | null
+  matchedAgreementId: string | null
+}
+
+type AccountType = 'private' | 'company' | 'rental' | null
+type B2BCompanyTab = 'boter' | 'ansatte' | 'firmabiler' | 'betaling' | 'rapporter'
+type B2BRentalTab = 'boter' | 'leieavtaler' | 'kjoretoy' | 'saksbehandling' | 'rapporter'
+type Screen = 'bankid' | 'account-select' | 'dashboard' | 'admin' | 'profile' | 'history' | 'appeals' | 'b2b-company' | 'b2b-rental'
+
+// ── Mock B2B data ──────────────────────────────────────────────────────────
+
+const mockEmployees: Employee[] = [
+  { id: 'e1', name: 'Lars Eriksen', email: 'lars@firma.no', phone: '91234567', licensePlates: ['EL12345'], fineCount: 2 },
+  { id: 'e2', name: 'Marte Olsen', email: 'marte@firma.no', phone: '98765432', licensePlates: ['FK98765'], fineCount: 1 },
+  { id: 'e3', name: 'Jonas Berg', email: 'jonas@firma.no', phone: '40123456', licensePlates: ['PQ55432'], fineCount: 1 },
+]
+
+const mockCompanyVehicles: CompanyVehicle[] = [
+  { id: 'cv1', licensePlate: 'EL12345', make: 'Tesla', model: 'Model 3', year: 2023, assignedTo: 'Lars Eriksen', fineCount: 2 },
+  { id: 'cv2', licensePlate: 'FK98765', make: 'Volkswagen', model: 'ID.4', year: 2022, assignedTo: 'Marte Olsen', fineCount: 1 },
+  { id: 'cv3', licensePlate: 'PQ55432', make: 'Toyota', model: 'RAV4', year: 2021, assignedTo: 'Jonas Berg', fineCount: 1 },
+]
+
+const mockCompanyFines: CompanyFine[] = [
+  { id: 101, licensePlate: 'EL12345', amount: 900, date: '2026-09-10', time: '08:15', location: 'Storgata 5', municipality: 'Oslo kommune', paid: false, driverName: 'Lars Eriksen', employeeId: 'e1' },
+  { id: 102, licensePlate: 'EL12345', amount: 660, date: '2026-08-30', time: '17:45', location: 'Grünerløkka', municipality: 'Oslo kommune', paid: true, driverName: 'Lars Eriksen', employeeId: 'e1' },
+  { id: 103, licensePlate: 'FK98765', amount: 750, date: '2026-09-14', time: '11:00', location: 'Bryggen 2', municipality: 'Bergen kommune', paid: false, driverName: 'Marte Olsen', employeeId: 'e2' },
+  { id: 104, licensePlate: 'PQ55432', amount: 500, date: '2026-09-01', time: '14:30', location: 'Sandvika sentrum', municipality: 'Bærum kommune', paid: false, driverName: 'Jonas Berg', employeeId: 'e3' },
+]
+
+const mockRentalVehicles: RentalVehicle[] = [
+  { id: 'rv1', licensePlate: 'UT11111', make: 'Kia', model: 'EV6', year: 2024, status: 'utleid' },
+  { id: 'rv2', licensePlate: 'UT22222', make: 'Hyundai', model: 'Ioniq 5', year: 2023, status: 'ledig' },
+  { id: 'rv3', licensePlate: 'UT33333', make: 'Peugeot', model: '208', year: 2022, status: 'service' },
+]
+
+const mockRentalAgreements: RentalAgreement[] = [
+  {
+    id: 'ra1',
+    vehicleLicensePlate: 'UT11111',
+    renterName: 'Sofie Andersen',
+    renterEmail: 'sofie@example.com',
+    renterPhone: '99887766',
+    startDate: '2026-09-08',
+    endDate: '2026-09-18',
+    status: 'active',
+  },
+  {
+    id: 'ra2',
+    vehicleLicensePlate: 'UT22222',
+    renterName: 'Henrik Dahl',
+    renterEmail: 'henrik@example.com',
+    renterPhone: '92345678',
+    startDate: '2026-08-20',
+    endDate: '2026-08-31',
+    status: 'completed',
+  },
+]
+
+// Bot på UT11111 den 2026-09-12 — Sofie Andersen hadde avtale ra1 (08.–18. sept) → automatisk match
+const mockRentalFines: RentalFine[] = [
+  {
+    id: 201,
+    licensePlate: 'UT11111',
+    amount: 900,
+    date: '2026-09-12',
+    time: '10:20',
+    location: 'Jernbanetorget',
+    municipality: 'Oslo kommune',
+    status: 'Kobling funnet',
+    matchedRenterName: 'Sofie Andersen',
+    matchedAgreementId: 'ra1',
+  },
+  {
+    id: 202,
+    licensePlate: 'UT22222',
+    amount: 660,
+    date: '2026-08-25',
+    time: '14:00',
+    location: 'Aker Brygge',
+    municipality: 'Oslo kommune',
+    status: 'Krevd videre',
+    matchedRenterName: 'Henrik Dahl',
+    matchedAgreementId: 'ra2',
+  },
+  {
+    id: 203,
+    licensePlate: 'UT33333',
+    amount: 750,
+    date: '2026-09-20',
+    time: '09:05',
+    location: 'Torggata 3',
+    municipality: 'Oslo kommune',
+    status: 'Ny',
+    matchedRenterName: null,
+    matchedAgreementId: null,
+  },
+]
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+const statusBadge = (label: string, color: 'green' | 'orange' | 'red' | 'blue' | 'grey') => {
+  const bg: Record<string, string> = {
+    green: '#d1fae5',
+    orange: '#fef3c7',
+    red: '#fee2e2',
+    blue: '#dbeafe',
+    grey: '#f3f4f6',
+  }
+  const fg: Record<string, string> = {
+    green: '#065f46',
+    orange: '#92400e',
+    red: '#991b1b',
+    blue: '#1e40af',
+    grey: '#374151',
+  }
+  return (
+    <span style={{
+      padding: '3px 10px',
+      borderRadius: '12px',
+      fontSize: '12px',
+      fontWeight: 600,
+      background: bg[color],
+      color: fg[color],
+      display: 'inline-block',
+    }}>{label}</span>
+  )
+}
+
+const rentalFineStatusColor = (status: RentalFineStatus): 'green' | 'orange' | 'red' | 'blue' | 'grey' => {
+  switch (status) {
+    case 'Betalt': return 'green'
+    case 'Kobling funnet': return 'blue'
+    case 'Behandles': return 'orange'
+    case 'Krevd videre': return 'grey'
+    case 'Ny': return 'red'
+  }
+}
+
+const vehicleStatusColor = (status: RentalVehicle['status']): 'green' | 'orange' | 'red' => {
+  if (status === 'ledig') return 'green'
+  if (status === 'utleid') return 'orange'
+  return 'red'
+}
+
+const tabBtn = (label: string, active: boolean, onClick: () => void) => (
+  <button
+    key={label}
+    onClick={onClick}
+    style={{
+      padding: '10px 20px',
+      background: active ? 'var(--accent)' : '#f0f0f0',
+      color: active ? 'white' : '#333',
+      border: 'none',
+      borderRadius: '6px',
+      cursor: 'pointer',
+      fontWeight: active ? 700 : 400,
+      fontSize: '14px',
+    }}
+  >
+    {label}
+  </button>
+)
+
+// ── Main component ─────────────────────────────────────────────────────────
+
 export default function Home() {
-  const [screen, setScreen] = useState<'bankid' | 'dashboard' | 'admin' | 'profile' | 'history' | 'appeals'>('bankid')
+  const [screen, setScreen] = useState<Screen>('bankid')
+  const [accountType, setAccountType] = useState<AccountType>(null)
+  const [b2bCompanyTab, setB2bCompanyTab] = useState<B2BCompanyTab>('boter')
+  const [b2bRentalTab, setB2bRentalTab] = useState<B2BRentalTab>('boter')
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [adminPassword, setAdminPassword] = useState('')
@@ -58,6 +291,10 @@ export default function Home() {
   const [appealCategory, setAppealCategory] = useState('')
   const [appealReason, setAppealReason] = useState('')
   const [appealFiles, setAppealFiles] = useState<string[]>([])
+
+  // Rental fine state for saksbehandling
+  const [rentalFines, setRentalFines] = useState<RentalFine[]>(mockRentalFines)
+  const [selectedRentalFineId, setSelectedRentalFineId] = useState<number | null>(null)
 
   // BankID Mock Login State
   const [bankidForm, setBankidForm] = useState({
@@ -199,7 +436,7 @@ export default function Home() {
 
   const t = translations[language]
 
-  // Mock BankID Login Handler
+  // Mock BankID Login Handler — now routes to account-select
   const handleBankIDLogin = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -218,7 +455,6 @@ export default function Home() {
       return
     }
 
-    // Mock user object
     const user: User = {
       id: Math.random().toString(36).substr(2, 9),
       email: bankidForm.email,
@@ -229,7 +465,8 @@ export default function Home() {
 
     setCurrentUser(user)
     await loadUserData(user)
-    setScreen('dashboard')
+    // Route to account type selection instead of going directly to dashboard
+    setScreen('account-select')
     setBankidForm({
       name: '',
       email: '',
@@ -243,11 +480,9 @@ export default function Home() {
   }
 
   const loadUserData = async (user: User) => {
-    // Load demo fines for the user
     const userFines = demoFines.filter((fine) => fine.license_plate === user.license_plate)
     setFines(userFines)
 
-    // Mock payment history
     const mockPaymentHistory: PaymentRecord[] = [
       {
         id: '1',
@@ -259,7 +494,6 @@ export default function Home() {
     ]
     setPaymentHistory(mockPaymentHistory)
 
-    // Mock notifications
     const mockNotifications: Notification[] = [
       {
         id: '1',
@@ -286,6 +520,7 @@ export default function Home() {
     setPaymentHistory([])
     setNotifications([])
     setAppeals([])
+    setAccountType(null)
     setScreen('bankid')
   }
 
@@ -353,7 +588,6 @@ export default function Home() {
     setAppealReason('')
     setAppealFiles([])
 
-    // Mock notification
     const mockNotification: Notification = {
       id: Math.random().toString(36).substr(2, 9),
       type: 'email',
@@ -365,6 +599,15 @@ export default function Home() {
     setNotifications([...notifications, mockNotification])
     setAppealStep(3)
   }
+
+  const handleRentalFineAction = (fineId: number, action: 'Krevd videre' | 'Betalt' | 'Behandles') => {
+    setRentalFines(prev =>
+      prev.map(f => f.id === fineId ? { ...f, status: action as RentalFineStatus } : f)
+    )
+    setSelectedRentalFineId(null)
+  }
+
+  // ── SCREEN: BankID ────────────────────────────────────────────────────────
 
   if (screen === 'bankid') {
     return (
@@ -402,15 +645,13 @@ export default function Home() {
           <h1>{t.title}</h1>
           <p className={styles.tagline}>{t.subtitle}</p>
 
-          {/* BankID primary login */}
           <div style={{
-            background: '#fff',
-            border: '2px solid #e8e8e8',
+            background: darkMode ? '#2a2a2a' : '#fff',
+            border: darkMode ? '2px solid #444' : '2px solid #e8e8e8',
             borderRadius: '12px',
             padding: '32px',
             marginBottom: '16px',
           }}>
-            {/* BankID logo area */}
             <div style={{ textAlign: 'center', marginBottom: '24px' }}>
               <div style={{
                 display: 'inline-flex',
@@ -528,7 +769,6 @@ export default function Home() {
             {searchError && <p className={styles.error}>{searchError}</p>}
           </div>
 
-          {/* Discreet admin login */}
           <details style={{ marginTop: '8px' }}>
             <summary style={{ cursor: 'pointer', color: '#aaa', fontSize: '13px', textAlign: 'center', listStyle: 'none' }}>
               Admin
@@ -551,6 +791,600 @@ export default function Home() {
       </div>
     )
   }
+
+  // ── SCREEN: Velg kontotype ─────────────────────────────────────────────────
+
+  if (screen === 'account-select' && currentUser) {
+    const cardStyle = (selected: boolean): React.CSSProperties => ({
+      background: selected ? '#e8f0fc' : '#fff',
+      border: `2px solid ${selected ? 'var(--accent)' : '#e0e0e0'}`,
+      borderRadius: '12px',
+      padding: '28px 24px',
+      cursor: 'pointer',
+      textAlign: 'left',
+      width: '100%',
+      marginBottom: '14px',
+      transition: 'border-color 0.15s',
+    })
+
+    const options: { type: AccountType; icon: string; title: string; desc: string }[] = [
+      { type: 'private', icon: '🚗', title: 'Privat', desc: 'For privatpersoner med egne biler og egne bøter.' },
+      { type: 'company', icon: '🏢', title: 'Bedrift', desc: 'For firmaer med firmabiler og ansatte. Håndter flåtebøter, ansattkoblinger og felles betaling.' },
+      { type: 'rental', icon: '🔑', title: 'Bilutleie', desc: 'For bilutleiere, bildelingsselskaper og leasingfirmaer. Koble bøter til leieavtaler og krev videre til leietaker.' },
+    ]
+
+    return (
+      <div className={`${styles.container} ${darkMode ? styles.darkMode : ''}`}>
+        <div className={styles.loginBox}>
+          <div style={{ marginBottom: '8px' }}>
+            <h1 style={{ fontSize: '22px', marginBottom: '4px' }}>Velg kontotype</h1>
+            <p style={{ color: '#666', fontSize: '14px' }}>Hei, {currentUser.name}! Hvordan vil du bruke Parkeringsbot?</p>
+          </div>
+
+          <div style={{ marginTop: '24px' }}>
+            {options.map(({ type, icon, title, desc }) => (
+              <button
+                key={type}
+                style={cardStyle(accountType === type)}
+                onClick={() => setAccountType(type)}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <span style={{ fontSize: '28px' }}>{icon}</span>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '16px', color: '#003366', marginBottom: '4px' }}>{title}</div>
+                    <div style={{ fontSize: '13px', color: '#555' }}>{desc}</div>
+                  </div>
+                  {accountType === type && (
+                    <span style={{ marginLeft: 'auto', color: 'var(--accent)', fontSize: '20px' }}>✓</span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+
+          <button
+            disabled={!accountType}
+            onClick={() => {
+              if (accountType === 'private') setScreen('dashboard')
+              else if (accountType === 'company') setScreen('b2b-company')
+              else if (accountType === 'rental') setScreen('b2b-rental')
+            }}
+            style={{
+              width: '100%',
+              marginTop: '10px',
+              padding: '14px',
+              background: accountType ? 'var(--accent)' : '#ccc',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '16px',
+              fontWeight: 700,
+              cursor: accountType ? 'pointer' : 'not-allowed',
+            }}
+          >
+            Fortsett →
+          </button>
+
+          <button
+            onClick={handleLogout}
+            style={{
+              width: '100%',
+              marginTop: '10px',
+              padding: '10px',
+              background: 'transparent',
+              color: '#888',
+              border: '1px solid #ddd',
+              borderRadius: '8px',
+              fontSize: '14px',
+              cursor: 'pointer',
+            }}
+          >
+            Avbryt og logg ut
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── SCREEN: B2B Bedrift ───────────────────────────────────────────────────
+
+  if (screen === 'b2b-company' && currentUser) {
+    const unpaidFines = mockCompanyFines.filter(f => !f.paid)
+    const totalUnpaid = unpaidFines.reduce((s, f) => s + f.amount, 0)
+    const totalAll = mockCompanyFines.reduce((s, f) => s + f.amount, 0)
+
+    return (
+      <div className={`${styles.container} ${darkMode ? styles.darkMode : ''}`}>
+        <div className={styles.dashboard}>
+          {/* Header */}
+          <div className={styles.header}>
+            <div>
+              <h1 style={{ marginBottom: '2px' }}>Bedriftsdashboard</h1>
+              <p className={styles.subtitle}>{currentUser.name} • Firma-konto</p>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button
+                style={{ padding: '8px 16px', background: '#f0f0f0', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}
+                onClick={() => setScreen('account-select')}
+              >
+                Bytt kontotype
+              </button>
+              <button className={styles.btnLogout} onClick={handleLogout}>{t.logout}</button>
+            </div>
+          </div>
+
+          {/* Tab nav */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap' }}>
+            {([
+              ['boter', 'Bøter'],
+              ['ansatte', 'Ansatte'],
+              ['firmabiler', 'Firmabiler'],
+              ['betaling', 'Betaling'],
+              ['rapporter', 'Rapporter'],
+            ] as [B2BCompanyTab, string][]).map(([key, label]) =>
+              tabBtn(label, b2bCompanyTab === key, () => setB2bCompanyTab(key))
+            )}
+          </div>
+
+          {/* Tab: Bøter */}
+          {b2bCompanyTab === 'boter' && (
+            <div>
+              <h2 style={{ marginBottom: '16px' }}>Firmabøter</h2>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                  <thead>
+                    <tr style={{ background: '#f5f5f5' }}>
+                      {['Regnr', 'Beløp', 'Dato', 'Sted', 'Hvem kjørte', 'Status', 'Handling'].map(h => (
+                        <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '2px solid #e0e0e0' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mockCompanyFines.map(fine => (
+                      <tr key={fine.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                        <td style={{ padding: '10px 12px', fontWeight: 600 }}>{fine.licensePlate}</td>
+                        <td style={{ padding: '10px 12px' }}>kr {fine.amount}</td>
+                        <td style={{ padding: '10px 12px' }}>{fine.date} {fine.time}</td>
+                        <td style={{ padding: '10px 12px' }}>{fine.location}, {fine.municipality}</td>
+                        <td style={{ padding: '10px 12px' }}>{fine.driverName}</td>
+                        <td style={{ padding: '10px 12px' }}>
+                          {fine.paid ? statusBadge('Betalt', 'green') : statusBadge('Ubetalt', 'red')}
+                        </td>
+                        <td style={{ padding: '10px 12px' }}>
+                          {!fine.paid && (
+                            <button style={{
+                              padding: '5px 12px', background: 'var(--accent)', color: 'white',
+                              border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '12px',
+                            }}>
+                              Betal
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Tab: Ansatte */}
+          {b2bCompanyTab === 'ansatte' && (
+            <div>
+              <h2 style={{ marginBottom: '16px' }}>Ansatte</h2>
+              <div style={{ display: 'grid', gap: '12px' }}>
+                {mockEmployees.map(emp => (
+                  <div key={emp.id} style={{
+                    background: '#fff', border: '1px solid #e8e8e8', borderRadius: '10px',
+                    padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '20px',
+                  }}>
+                    <div style={{
+                      width: 44, height: 44, borderRadius: '50%',
+                      background: 'var(--accent)', color: 'white',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontWeight: 700, fontSize: '18px', flexShrink: 0,
+                    }}>
+                      {emp.name.charAt(0)}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, marginBottom: '2px' }}>{emp.name}</div>
+                      <div style={{ fontSize: '13px', color: '#666' }}>{emp.email} • {emp.phone}</div>
+                      <div style={{ fontSize: '13px', color: '#666', marginTop: '2px' }}>
+                        Biler: {emp.licensePlates.join(', ')}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '24px', fontWeight: 700, color: emp.fineCount > 1 ? '#dc2626' : '#003366' }}>{emp.fineCount}</div>
+                      <div style={{ fontSize: '12px', color: '#666' }}>bøter</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tab: Firmabiler */}
+          {b2bCompanyTab === 'firmabiler' && (
+            <div>
+              <h2 style={{ marginBottom: '16px' }}>Flåteoversikt</h2>
+              <div style={{ display: 'grid', gap: '12px' }}>
+                {mockCompanyVehicles.map(v => (
+                  <div key={v.id} style={{
+                    background: '#fff', border: '1px solid #e8e8e8', borderRadius: '10px',
+                    padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px',
+                  }}>
+                    <span style={{ fontSize: '28px' }}>🚗</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700 }}>{v.licensePlate}</div>
+                      <div style={{ fontSize: '13px', color: '#666' }}>{v.year} {v.make} {v.model}</div>
+                      {v.assignedTo && (
+                        <div style={{ fontSize: '13px', color: '#555', marginTop: '2px' }}>Tildelt: {v.assignedTo}</div>
+                      )}
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '20px', fontWeight: 700, color: v.fineCount > 1 ? '#dc2626' : '#003366' }}>{v.fineCount}</div>
+                      <div style={{ fontSize: '12px', color: '#666' }}>bøter</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tab: Betaling */}
+          {b2bCompanyTab === 'betaling' && (
+            <div>
+              <h2 style={{ marginBottom: '8px' }}>Betaling</h2>
+              <div style={{ display: 'grid', gap: '14px', marginBottom: '24px' }}>
+                <div style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: '10px', padding: '20px' }}>
+                  <p style={{ color: '#666', marginBottom: '4px', fontSize: '13px' }}>Totalt ubetalte bøter</p>
+                  <p style={{ fontSize: '28px', fontWeight: 700, color: '#dc2626' }}>kr {totalUnpaid}</p>
+                  <p style={{ fontSize: '13px', color: '#666' }}>{unpaidFines.length} bøter</p>
+                  <button style={{
+                    marginTop: '12px', padding: '12px 24px', background: 'var(--accent)', color: 'white',
+                    border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 700,
+                  }}>
+                    Betal alle ({unpaidFines.length}) →
+                  </button>
+                </div>
+              </div>
+              <h3 style={{ marginBottom: '12px' }}>Enkeltbøter</h3>
+              {unpaidFines.map(fine => (
+                <div key={fine.id} style={{
+                  background: '#fff', border: '1px solid #e8e8e8', borderRadius: '8px',
+                  padding: '14px 18px', marginBottom: '8px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{fine.licensePlate} — kr {fine.amount}</div>
+                    <div style={{ fontSize: '13px', color: '#666' }}>{fine.date} • {fine.driverName}</div>
+                  </div>
+                  <button style={{
+                    padding: '8px 16px', background: 'var(--accent)', color: 'white',
+                    border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px',
+                  }}>
+                    Betal
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Tab: Rapporter */}
+          {b2bCompanyTab === 'rapporter' && (
+            <div>
+              <h2 style={{ marginBottom: '16px' }}>Rapporter</h2>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px', marginBottom: '24px' }}>
+                {[
+                  { label: 'Totalt antall bøter', value: mockCompanyFines.length.toString(), color: '#003366' },
+                  { label: 'Totalt beløp', value: `kr ${totalAll}`, color: '#003366' },
+                  { label: 'Ubetalt beløp', value: `kr ${totalUnpaid}`, color: '#dc2626' },
+                  { label: 'Betalt beløp', value: `kr ${totalAll - totalUnpaid}`, color: '#065f46' },
+                ].map(({ label, value, color }) => (
+                  <div key={label} style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: '10px', padding: '18px' }}>
+                    <p style={{ fontSize: '12px', color: '#666', marginBottom: '6px' }}>{label}</p>
+                    <p style={{ fontSize: '22px', fontWeight: 700, color }}>{value}</p>
+                  </div>
+                ))}
+              </div>
+              <h3 style={{ marginBottom: '12px' }}>Mest bøter — ansatt</h3>
+              {[...mockEmployees].sort((a, b) => b.fineCount - a.fineCount).map(emp => (
+                <div key={emp.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 16px', background: '#fff', border: '1px solid #e8e8e8',
+                  borderRadius: '8px', marginBottom: '6px',
+                }}>
+                  <span style={{ fontWeight: 600 }}>{emp.name}</span>
+                  {statusBadge(`${emp.fineCount} bøter`, emp.fineCount > 1 ? 'red' : 'orange')}
+                </div>
+              ))}
+              <h3 style={{ marginTop: '20px', marginBottom: '12px' }}>Mest bøter — kjøretøy</h3>
+              {[...mockCompanyVehicles].sort((a, b) => b.fineCount - a.fineCount).map(v => (
+                <div key={v.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '10px 16px', background: '#fff', border: '1px solid #e8e8e8',
+                  borderRadius: '8px', marginBottom: '6px',
+                }}>
+                  <span style={{ fontWeight: 600 }}>{v.licensePlate} — {v.make} {v.model}</span>
+                  {statusBadge(`${v.fineCount} bøter`, v.fineCount > 1 ? 'red' : 'orange')}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── SCREEN: B2B Bilutleie ─────────────────────────────────────────────────
+
+  if (screen === 'b2b-rental' && currentUser) {
+    const selectedRentalFine = rentalFines.find(f => f.id === selectedRentalFineId)
+
+    return (
+      <div className={`${styles.container} ${darkMode ? styles.darkMode : ''}`}>
+        <div className={styles.dashboard}>
+          {/* Header */}
+          <div className={styles.header}>
+            <div>
+              <h1 style={{ marginBottom: '2px' }}>Bilutleie-dashboard</h1>
+              <p className={styles.subtitle}>{currentUser.name} • Utleie-konto</p>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button
+                style={{ padding: '8px 16px', background: '#f0f0f0', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}
+                onClick={() => setScreen('account-select')}
+              >
+                Bytt kontotype
+              </button>
+              <button className={styles.btnLogout} onClick={handleLogout}>{t.logout}</button>
+            </div>
+          </div>
+
+          {/* Tab nav */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', flexWrap: 'wrap' }}>
+            {([
+              ['boter', 'Bøter'],
+              ['leieavtaler', 'Leieavtaler'],
+              ['kjoretoy', 'Kjøretøy'],
+              ['saksbehandling', 'Saksbehandling'],
+              ['rapporter', 'Rapporter'],
+            ] as [B2BRentalTab, string][]).map(([key, label]) =>
+              tabBtn(label, b2bRentalTab === key, () => { setB2bRentalTab(key); setSelectedRentalFineId(null) })
+            )}
+          </div>
+
+          {/* Tab: Bøter */}
+          {b2bRentalTab === 'boter' && (
+            <div>
+              <h2 style={{ marginBottom: '16px' }}>Bøter</h2>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                  <thead>
+                    <tr style={{ background: '#f5f5f5' }}>
+                      {['Regnr', 'Beløp', 'Dato', 'Sted', 'Status'].map(h => (
+                        <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '2px solid #e0e0e0' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rentalFines.map(fine => (
+                      <tr key={fine.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                        <td style={{ padding: '10px 12px', fontWeight: 600 }}>{fine.licensePlate}</td>
+                        <td style={{ padding: '10px 12px' }}>kr {fine.amount}</td>
+                        <td style={{ padding: '10px 12px' }}>{fine.date} {fine.time}</td>
+                        <td style={{ padding: '10px 12px' }}>{fine.location}</td>
+                        <td style={{ padding: '10px 12px' }}>
+                          {statusBadge(fine.status, rentalFineStatusColor(fine.status))}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Tab: Leieavtaler */}
+          {b2bRentalTab === 'leieavtaler' && (
+            <div>
+              <h2 style={{ marginBottom: '16px' }}>Leieavtaler</h2>
+              <div style={{ display: 'grid', gap: '12px' }}>
+                {mockRentalAgreements.map(ra => (
+                  <div key={ra.id} style={{
+                    background: '#fff', border: '1px solid #e8e8e8', borderRadius: '10px', padding: '18px 20px',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: '16px' }}>{ra.renterName}</div>
+                        <div style={{ fontSize: '13px', color: '#666' }}>{ra.renterEmail} • {ra.renterPhone}</div>
+                      </div>
+                      {statusBadge(
+                        ra.status === 'active' ? 'Aktiv' : ra.status === 'completed' ? 'Avsluttet' : 'Kommende',
+                        ra.status === 'active' ? 'green' : ra.status === 'completed' ? 'grey' : 'blue'
+                      )}
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#555', borderTop: '1px solid #f0f0f0', paddingTop: '10px', marginTop: '4px' }}>
+                      <span style={{ marginRight: '20px' }}>🚗 {ra.vehicleLicensePlate}</span>
+                      <span>📅 {ra.startDate} → {ra.endDate}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tab: Kjøretøy */}
+          {b2bRentalTab === 'kjoretoy' && (
+            <div>
+              <h2 style={{ marginBottom: '16px' }}>Kjøretøyflåte</h2>
+              <div style={{ display: 'grid', gap: '12px' }}>
+                {mockRentalVehicles.map(v => (
+                  <div key={v.id} style={{
+                    background: '#fff', border: '1px solid #e8e8e8', borderRadius: '10px',
+                    padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px',
+                  }}>
+                    <span style={{ fontSize: '28px' }}>🚗</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700 }}>{v.licensePlate}</div>
+                      <div style={{ fontSize: '13px', color: '#666' }}>{v.year} {v.make} {v.model}</div>
+                    </div>
+                    {statusBadge(
+                      v.status.charAt(0).toUpperCase() + v.status.slice(1),
+                      vehicleStatusColor(v.status)
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tab: Saksbehandling */}
+          {b2bRentalTab === 'saksbehandling' && (
+            <div>
+              <h2 style={{ marginBottom: '16px' }}>Saksbehandling</h2>
+
+              {selectedRentalFine ? (
+                <div style={{ background: '#fff', border: '1px solid #e0e0e0', borderRadius: '12px', padding: '24px' }}>
+                  <button
+                    onClick={() => setSelectedRentalFineId(null)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#666', marginBottom: '16px', fontSize: '14px' }}
+                  >
+                    ← Tilbake til liste
+                  </button>
+                  <h3 style={{ marginBottom: '4px' }}>Bot #{selectedRentalFine.id} — {selectedRentalFine.licensePlate}</h3>
+                  <p style={{ fontSize: '14px', color: '#666', marginBottom: '16px' }}>
+                    {selectedRentalFine.date} {selectedRentalFine.time} • {selectedRentalFine.location} • kr {selectedRentalFine.amount}
+                  </p>
+
+                  {selectedRentalFine.matchedRenterName ? (
+                    <div style={{
+                      background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px',
+                      padding: '16px', marginBottom: '20px',
+                    }}>
+                      <div style={{ fontWeight: 600, color: '#1e40af', marginBottom: '4px' }}>
+                        ✅ Leietaker identifisert automatisk
+                      </div>
+                      <div style={{ fontSize: '14px', color: '#1d4ed8' }}>
+                        {selectedRentalFine.matchedRenterName} hadde bilen på bot-datoen
+                        {selectedRentalFine.matchedAgreementId && ` (leieavtale ${selectedRentalFine.matchedAgreementId})`}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{
+                      background: '#fef9c3', border: '1px solid #fde68a', borderRadius: '8px',
+                      padding: '16px', marginBottom: '20px',
+                    }}>
+                      <div style={{ fontWeight: 600, color: '#92400e' }}>⚠️ Ingen aktiv leieavtale funnet for denne datoen</div>
+                    </div>
+                  )}
+
+                  <p style={{ fontWeight: 600, marginBottom: '12px' }}>Velg handling:</p>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    {selectedRentalFine.matchedRenterName && (
+                      <button
+                        onClick={() => handleRentalFineAction(selectedRentalFine.id, 'Krevd videre')}
+                        style={{
+                          padding: '10px 20px', background: 'var(--accent)', color: 'white',
+                          border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600,
+                        }}
+                      >
+                        Krev videre til {selectedRentalFine.matchedRenterName}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleRentalFineAction(selectedRentalFine.id, 'Betalt')}
+                      style={{
+                        padding: '10px 20px', background: '#065f46', color: 'white',
+                        border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600,
+                      }}
+                    >
+                      Betal selv
+                    </button>
+                    <button
+                      onClick={() => handleRentalFineAction(selectedRentalFine.id, 'Behandles')}
+                      style={{
+                        padding: '10px 20px', background: '#92400e', color: 'white',
+                        border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600,
+                      }}
+                    >
+                      Anke boten
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: '10px' }}>
+                  {rentalFines.map(fine => (
+                    <div key={fine.id} style={{
+                      background: '#fff', border: '1px solid #e8e8e8', borderRadius: '10px',
+                      padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px',
+                      cursor: 'pointer',
+                    }}
+                      onClick={() => setSelectedRentalFineId(fine.id)}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, marginBottom: '2px' }}>
+                          {fine.licensePlate} — kr {fine.amount}
+                        </div>
+                        <div style={{ fontSize: '13px', color: '#666' }}>
+                          {fine.date} • {fine.location}
+                        </div>
+                        {fine.matchedRenterName && (
+                          <div style={{ fontSize: '13px', color: '#1d4ed8', marginTop: '2px' }}>
+                            Leietaker: {fine.matchedRenterName}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {statusBadge(fine.status, rentalFineStatusColor(fine.status))}
+                        <span style={{ color: '#999', fontSize: '18px' }}>›</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab: Rapporter (rental) */}
+          {b2bRentalTab === 'rapporter' && (
+            <div>
+              <h2 style={{ marginBottom: '16px' }}>Rapporter</h2>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px', marginBottom: '24px' }}>
+                {[
+                  { label: 'Totalt bøter', value: rentalFines.length.toString(), color: '#003366' },
+                  { label: 'Totalt beløp', value: `kr ${rentalFines.reduce((s, f) => s + f.amount, 0)}`, color: '#003366' },
+                  { label: 'Krevd videre', value: rentalFines.filter(f => f.status === 'Krevd videre').length.toString(), color: '#065f46' },
+                  { label: 'Ubehandlet', value: rentalFines.filter(f => f.status === 'Ny').length.toString(), color: '#dc2626' },
+                ].map(({ label, value, color }) => (
+                  <div key={label} style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: '10px', padding: '18px' }}>
+                    <p style={{ fontSize: '12px', color: '#666', marginBottom: '6px' }}>{label}</p>
+                    <p style={{ fontSize: '22px', fontWeight: 700, color }}>{value}</p>
+                  </div>
+                ))}
+              </div>
+              <h3 style={{ marginBottom: '12px' }}>Statusfordeling</h3>
+              {(['Ny', 'Kobling funnet', 'Behandles', 'Betalt', 'Krevd videre'] as RentalFineStatus[]).map(s => {
+                const count = rentalFines.filter(f => f.status === s).length
+                return (
+                  <div key={s} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '10px 16px', background: '#fff', border: '1px solid #e8e8e8',
+                    borderRadius: '8px', marginBottom: '6px',
+                  }}>
+                    {statusBadge(s, rentalFineStatusColor(s))}
+                    <span style={{ fontWeight: 600 }}>{count}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── SCREEN: Private dashboard ──────────────────────────────────────────────
 
   if (screen === 'dashboard' && currentUser) {
     const totalAmount = fines.reduce((sum, f) => sum + f.amount, 0)
@@ -683,7 +1517,7 @@ export default function Home() {
             <div className={styles.fineCard} style={{ marginTop: '20px', background: 'var(--card-bg)' }}>
               {/* Step indicator */}
               <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', alignItems: 'center' }}>
-                {[1,2].map(s => (
+                {[1, 2].map(s => (
                   <React.Fragment key={s}>
                     <div style={{
                       width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -696,7 +1530,6 @@ export default function Home() {
                 ))}
               </div>
 
-              {/* Steg 1: Velg grunn */}
               {appealStep === 1 && (
                 <>
                   <h3 style={{ marginBottom: '16px' }}>Hvorfor ønsker du å klage?</h3>
@@ -738,7 +1571,6 @@ export default function Home() {
                 </>
               )}
 
-              {/* Steg 2: Last opp dokumentasjon */}
               {appealStep === 2 && (
                 <>
                   <h3 style={{ marginBottom: '4px' }}>Dokumentasjon</h3>
@@ -746,7 +1578,6 @@ export default function Home() {
                     Last opp bilder eller dokumenter som støtter klagen din
                   </p>
 
-                  {/* Filopplastingsknapper */}
                   {[
                     { label: '📷 Bilde av skilt', key: 'skilt' },
                     { label: '📷 Bilde av bilen', key: 'bil' },
@@ -806,7 +1637,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* Steg 3: Bekreftelse */}
           {appealStep === 3 && (
             <div className={styles.fineCard} style={{ marginTop: '20px', textAlign: 'center', padding: '30px' }}>
               <div style={{ fontSize: '48px', marginBottom: '12px' }}>✅</div>
