@@ -111,7 +111,7 @@ interface RentalFine {
 type AccountType = 'private' | 'company' | 'rental' | null
 type B2BCompanyTab = 'boter' | 'ansatte' | 'firmabiler' | 'betaling' | 'rapporter'
 type B2BRentalTab = 'boter' | 'leieavtaler' | 'kjoretoy' | 'saksbehandling' | 'rapporter'
-type Screen = 'bankid' | 'account-select' | 'dashboard' | 'admin' | 'profile' | 'history' | 'appeals' | 'b2b-company' | 'b2b-rental'
+type Screen = 'bankid' | 'account-select' | 'dashboard' | 'admin' | 'profile' | 'history' | 'appeals' | 'notifications' | 'b2b-company' | 'b2b-rental'
 
 // ── Mock B2B data ──────────────────────────────────────────────────────────
 
@@ -291,6 +291,15 @@ export default function Home() {
   const [appealCategory, setAppealCategory] = useState('')
   const [appealReason, setAppealReason] = useState('')
   const [appealFiles, setAppealFiles] = useState<string[]>([])
+
+  // Notification preferences state
+  const [notificationPrefs, setNotificationPrefs] = useState({
+    email: true,
+    payment: true,
+    appeal: true,
+  })
+  const [notifEmail, setNotifEmail] = useState('')
+  const [notifSaveStatus, setNotifSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
 
   // Rental fine state for saksbehandling
   const [rentalFines, setRentalFines] = useState<RentalFine[]>(mockRentalFines)
@@ -480,6 +489,7 @@ export default function Home() {
   }
 
   const loadUserData = async (user: User) => {
+    setNotifEmail(user.email)
     const userFines = demoFines.filter((fine) => fine.license_plate === user.license_plate)
     setFines(userFines)
 
@@ -1453,6 +1463,19 @@ export default function Home() {
             >
               {t.appeals}
             </button>
+            <button
+              onClick={() => setScreen('notifications')}
+              style={{
+                padding: '10px 20px',
+                background: (screen as string) === 'notifications' ? 'var(--accent)' : '#f0f0f0',
+                color: (screen as string) === 'notifications' ? 'white' : 'var(--text-primary)',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+              }}
+            >
+              🔔 Varsler
+            </button>
           </div>
 
           <div className={styles.summary}>
@@ -1649,6 +1672,178 @@ export default function Home() {
               </button>
             </div>
           )}
+        </div>
+      </div>
+    )
+  }
+
+  if (screen === 'notifications' && currentUser) {
+    const anyEnabled = notificationPrefs.email || notificationPrefs.payment || notificationPrefs.appeal
+
+    const handleSaveNotifications = async () => {
+      setNotifSaveStatus('saving')
+      try {
+        const res = await fetch('/api/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'new_fine',
+            userId: currentUser.id,
+            email: notifEmail,
+            fine: { amount: 0, location: 'Test', date: new Date().toISOString().slice(0, 10) },
+          }),
+        })
+        if (res.ok) {
+          setNotifSaveStatus('saved')
+        } else {
+          setNotifSaveStatus('error')
+        }
+      } catch {
+        setNotifSaveStatus('error')
+      }
+      setTimeout(() => setNotifSaveStatus('idle'), 3000)
+    }
+
+    const toggleStyle = (active: boolean): React.CSSProperties => ({
+      display: 'inline-block',
+      width: 44,
+      height: 24,
+      borderRadius: 12,
+      background: active ? '#003366' : '#ccc',
+      position: 'relative',
+      cursor: 'pointer',
+      transition: 'background 0.2s',
+      flexShrink: 0,
+    })
+
+    const knobStyle = (active: boolean): React.CSSProperties => ({
+      position: 'absolute',
+      top: 3,
+      left: active ? 23 : 3,
+      width: 18,
+      height: 18,
+      borderRadius: '50%',
+      background: 'white',
+      transition: 'left 0.2s',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+    })
+
+    return (
+      <div className={`${styles.container} ${darkMode ? styles.darkMode : ''}`}>
+        <div className={styles.dashboard}>
+          <div className={styles.header}>
+            <div>
+              <h1>🔔 Varsler</h1>
+              <p className={styles.subtitle}>{currentUser.name}</p>
+            </div>
+            <button className={styles.btnLogout} onClick={handleLogout}>{t.logout}</button>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '24px', flexWrap: 'wrap' }}>
+            {(['dashboard', 'history', 'appeals', 'notifications'] as Screen[]).map((s) => {
+              const labels: Record<string, string> = {
+                dashboard: t.myFines,
+                history: t.paymentHistory,
+                appeals: t.appeals,
+                notifications: '🔔 Varsler',
+              }
+              return (
+                <button
+                  key={s}
+                  onClick={() => setScreen(s)}
+                  style={{
+                    padding: '10px 20px',
+                    background: screen === s ? 'var(--accent)' : '#f0f0f0',
+                    color: screen === s ? 'white' : 'var(--text-primary)',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {labels[s]}
+                </button>
+              )
+            })}
+          </div>
+
+          <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '28px', maxWidth: 560 }}>
+            <h2 style={{ marginTop: 0, marginBottom: '6px', color: '#003366' }}>Varslingsinnstillinger</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '24px' }}>
+              Velg hvilke varsler du ønsker å motta på e-post.
+            </p>
+
+            {/* Status */}
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '8px',
+              padding: '8px 14px', borderRadius: '20px', marginBottom: '24px',
+              background: anyEnabled ? '#d1fae5' : '#fef3c7',
+              color: anyEnabled ? '#065f46' : '#92400e',
+              fontSize: '13px', fontWeight: 600,
+            }}>
+              {anyEnabled ? '✅ Varsler er aktivert' : '⚠️ Varsler er ikke satt opp'}
+            </div>
+
+            {/* Toggles */}
+            {[
+              { key: 'email' as const, label: 'E-postvarsler', desc: 'Få varsel når du mottar ny bot' },
+              { key: 'payment' as const, label: 'Betalingspåminnelse', desc: 'Påminnelse 3 dager før forfall' },
+              { key: 'appeal' as const, label: 'Ankestatus', desc: 'Oppdatering når anken din behandles' },
+            ].map(({ key, label, desc }) => (
+              <div key={key} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '14px 0', borderBottom: '1px solid var(--border-color)',
+              }}>
+                <div>
+                  <div style={{ fontWeight: 600, marginBottom: '2px' }}>{label}</div>
+                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{desc}</div>
+                </div>
+                <div
+                  style={toggleStyle(notificationPrefs[key])}
+                  onClick={() => setNotificationPrefs(prev => ({ ...prev, [key]: !prev[key] }))}
+                  role="switch"
+                  aria-checked={notificationPrefs[key]}
+                >
+                  <div style={knobStyle(notificationPrefs[key])} />
+                </div>
+              </div>
+            ))}
+
+            {/* E-post */}
+            <div style={{ marginTop: '20px' }}>
+              <label style={{ display: 'block', fontWeight: 600, marginBottom: '6px' }}>E-postadresse</label>
+              <input
+                type="email"
+                value={notifEmail}
+                onChange={(e) => setNotifEmail(e.target.value)}
+                style={{
+                  width: '100%', padding: '10px 14px', borderRadius: '8px',
+                  border: '1px solid var(--border-color)', background: 'var(--card-bg)',
+                  color: 'var(--text-primary)', fontSize: '15px', boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            {/* Lagre */}
+            <button
+              onClick={handleSaveNotifications}
+              disabled={notifSaveStatus === 'saving'}
+              style={{
+                marginTop: '20px', padding: '12px 28px',
+                background: notifSaveStatus === 'saving' ? '#ccc' : '#003366',
+                color: 'white', border: 'none', borderRadius: '8px',
+                fontWeight: 700, fontSize: '15px', cursor: notifSaveStatus === 'saving' ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {notifSaveStatus === 'saving' ? 'Lagrer...' : 'Lagre varsler'}
+            </button>
+
+            {notifSaveStatus === 'saved' && (
+              <p style={{ marginTop: '12px', color: '#065f46', fontWeight: 600 }}>✅ Varsler lagret og test-e-post sendt!</p>
+            )}
+            {notifSaveStatus === 'error' && (
+              <p style={{ marginTop: '12px', color: '#dc2626', fontWeight: 600 }}>⚠️ Kunne ikke lagre — sjekk e-post og prøv igjen.</p>
+            )}
+          </div>
         </div>
       </div>
     )
