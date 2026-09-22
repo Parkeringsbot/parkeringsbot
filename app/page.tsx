@@ -453,35 +453,37 @@ export default function Home() {
   const handleBankIDLogin = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!bankidForm.email || !bankidForm.phone || !bankidForm.name || !bankidForm.licensePlate) {
-      setSearchError(t.error + ': ' + 'Alle felt må fylles ut')
-      return
+    if (bankidForm.isNewUser) {
+      if (!bankidForm.firstName || !bankidForm.lastName || !bankidForm.email || !bankidForm.phone || !bankidForm.licensePlate) {
+        setSearchError('Alle felt må fylles ut')
+        return
+      }
+    } else {
+      if (!bankidForm.licensePlate || !bankidForm.password) {
+        setSearchError('Registreringsnummer og BankID-kode er påkrevd')
+        return
+      }
     }
 
-    if (!bankidForm.isNewUser && !bankidForm.password) {
-      setSearchError(t.error + ': ' + 'Passord er påkrevd')
-      return
-    }
-
-    if (bankidForm.isNewUser && bankidForm.password !== bankidForm.confirmPassword) {
-      setSearchError(t.error + ': ' + 'Passordene stemmer ikke')
-      return
-    }
+    const fullName = bankidForm.isNewUser
+      ? `${bankidForm.firstName} ${bankidForm.lastName}`
+      : 'Bruker'
 
     const user: User = {
       id: Math.random().toString(36).substr(2, 9),
-      email: bankidForm.email,
-      phone: bankidForm.phone,
-      name: bankidForm.name,
+      email: bankidForm.email || 'bruker@example.com',
+      phone: bankidForm.phone || '',
+      name: fullName,
       license_plate: bankidForm.licensePlate.toUpperCase(),
     }
 
     setCurrentUser(user)
     await loadUserData(user)
-    // Route to account type selection instead of going directly to dashboard
     setScreen('dashboard')
     setBankidForm({
       name: '',
+      firstName: '',
+      lastName: '',
       email: '',
       phone: '',
       licensePlate: '',
