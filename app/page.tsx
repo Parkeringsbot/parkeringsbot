@@ -310,6 +310,8 @@ export default function Home() {
   // BankID Mock Login State
   const [bankidForm, setBankidForm] = useState({
     name: '',
+    firstName: '',
+    lastName: '',
     email: '',
     phone: '',
     licensePlate: '',
@@ -653,71 +655,117 @@ export default function Home() {
           maxWidth: '440px',
           boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
         }}>
-          <h2 style={{ fontSize: '28px', fontWeight: 700, marginBottom: '32px', textAlign: 'center', color: '#111' }}>
-            Velkommen
+          <h2 style={{ fontSize: '28px', fontWeight: 700, marginBottom: '8px', textAlign: 'center', color: '#111' }}>
+            {bankidForm.isNewUser ? 'Opprett konto' : 'Velkommen'}
           </h2>
-
-          <form onSubmit={handleBankIDLogin}>
-            <div style={{ marginBottom: '16px' }}>
-              <input
-                type="text"
-                placeholder="Registreringsnummer (f.eks. AB12345)"
-                value={bankidForm.licensePlate}
-                onChange={(e) => setBankidForm({ ...bankidForm, licensePlate: e.target.value.toUpperCase() })}
-                style={{
-                  width: '100%', padding: '14px 16px', fontSize: '16px',
-                  border: '1.5px solid #d0d5dd', borderRadius: '8px',
-                  outline: 'none', boxSizing: 'border-box', color: '#111',
-                }}
-              />
-            </div>
-            <div style={{ marginBottom: '24px' }}>
-              <input
-                type="password"
-                placeholder="BankID-kode"
-                value={bankidForm.password}
-                onChange={(e) => setBankidForm({ ...bankidForm, password: e.target.value })}
-                style={{
-                  width: '100%', padding: '14px 16px', fontSize: '16px',
-                  border: '1.5px solid #d0d5dd', borderRadius: '8px',
-                  outline: 'none', boxSizing: 'border-box', color: '#111',
-                }}
-              />
-            </div>
-
-            <button
-              type="submit"
-              style={{
-                width: '100%', padding: '15px', background: '#2563eb',
-                color: 'white', border: 'none', borderRadius: '8px',
-                fontSize: '16px', fontWeight: 700, cursor: 'pointer',
-                letterSpacing: '0.2px',
-              }}
-            >
-              Fortsett
-            </button>
-          </form>
-
-          {searchError && (
-            <p style={{ marginTop: '16px', color: '#dc2626', fontSize: '14px', textAlign: 'center' }}>
-              {searchError}
+          {bankidForm.isNewUser && (
+            <p style={{ textAlign: 'center', color: '#666', fontSize: '14px', marginBottom: '28px' }}>
+              Fyll inn informasjonen din for å komme i gang
             </p>
           )}
+          {!bankidForm.isNewUser && <div style={{ marginBottom: '32px' }} />}
 
-          <div style={{ textAlign: 'center', margin: '20px 0', color: '#999', fontSize: '14px' }}>
-            eller
-          </div>
-
-          <button
-            onClick={() => setBankidForm({ ...bankidForm, isNewUser: true })}
-            style={{
-              width: '100%', padding: '15px', background: 'transparent',
-              color: '#2563eb', border: 'none', borderRadius: '8px',
-              fontSize: '16px', fontWeight: 600, cursor: 'pointer',
-            }}
-          >
-            Opprett konto gratis
-          </button>
+          {bankidForm.isNewUser ? (
+            <form onSubmit={handleBankIDLogin}>
+              {/* Navn */}
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+                <input
+                  type="text"
+                  placeholder="Fornavn"
+                  value={bankidForm.firstName}
+                  onChange={(e) => setBankidForm({ ...bankidForm, firstName: e.target.value })}
+                  style={{ flex: 1, padding: '14px 16px', fontSize: '16px', border: '1.5px solid #d0d5dd', borderRadius: '8px', outline: 'none', boxSizing: 'border-box', color: '#111' }}
+                />
+                <input
+                  type="text"
+                  placeholder="Etternavn"
+                  value={bankidForm.lastName}
+                  onChange={(e) => setBankidForm({ ...bankidForm, lastName: e.target.value })}
+                  style={{ flex: 1, padding: '14px 16px', fontSize: '16px', border: '1.5px solid #d0d5dd', borderRadius: '8px', outline: 'none', boxSizing: 'border-box', color: '#111' }}
+                />
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <input
+                  type="email"
+                  placeholder="E-postadresse"
+                  value={bankidForm.email}
+                  onChange={(e) => setBankidForm({ ...bankidForm, email: e.target.value })}
+                  style={{ width: '100%', padding: '14px 16px', fontSize: '16px', border: '1.5px solid #d0d5dd', borderRadius: '8px', outline: 'none', boxSizing: 'border-box', color: '#111' }}
+                />
+              </div>
+              <div style={{ marginBottom: '16px' }}>
+                <input
+                  type="tel"
+                  placeholder="Telefonnummer"
+                  value={bankidForm.phone}
+                  onChange={(e) => setBankidForm({ ...bankidForm, phone: e.target.value })}
+                  style={{ width: '100%', padding: '14px 16px', fontSize: '16px', border: '1.5px solid #d0d5dd', borderRadius: '8px', outline: 'none', boxSizing: 'border-box', color: '#111' }}
+                />
+              </div>
+              <div style={{ marginBottom: '24px' }}>
+                <input
+                  type="text"
+                  placeholder="Registreringsnummer (f.eks. AB12345)"
+                  value={bankidForm.licensePlate}
+                  onChange={(e) => setBankidForm({ ...bankidForm, licensePlate: e.target.value.toUpperCase() })}
+                  style={{ width: '100%', padding: '14px 16px', fontSize: '16px', border: '1.5px solid #d0d5dd', borderRadius: '8px', outline: 'none', boxSizing: 'border-box', color: '#111' }}
+                />
+              </div>
+              <button
+                type="submit"
+                style={{ width: '100%', padding: '15px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 700, cursor: 'pointer' }}
+              >
+                Opprett konto
+              </button>
+              {searchError && (
+                <p style={{ marginTop: '16px', color: '#dc2626', fontSize: '14px', textAlign: 'center' }}>{searchError}</p>
+              )}
+              <div style={{ textAlign: 'center', margin: '20px 0', color: '#999', fontSize: '14px' }}>eller</div>
+              <button
+                onClick={() => setBankidForm({ ...bankidForm, isNewUser: false })}
+                style={{ width: '100%', padding: '15px', background: 'transparent', color: '#2563eb', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 600, cursor: 'pointer' }}
+              >
+                Logg inn i stedet
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleBankIDLogin}>
+              <div style={{ marginBottom: '16px' }}>
+                <input
+                  type="text"
+                  placeholder="Registreringsnummer (f.eks. AB12345)"
+                  value={bankidForm.licensePlate}
+                  onChange={(e) => setBankidForm({ ...bankidForm, licensePlate: e.target.value.toUpperCase() })}
+                  style={{ width: '100%', padding: '14px 16px', fontSize: '16px', border: '1.5px solid #d0d5dd', borderRadius: '8px', outline: 'none', boxSizing: 'border-box', color: '#111' }}
+                />
+              </div>
+              <div style={{ marginBottom: '24px' }}>
+                <input
+                  type="password"
+                  placeholder="BankID-kode"
+                  value={bankidForm.password}
+                  onChange={(e) => setBankidForm({ ...bankidForm, password: e.target.value })}
+                  style={{ width: '100%', padding: '14px 16px', fontSize: '16px', border: '1.5px solid #d0d5dd', borderRadius: '8px', outline: 'none', boxSizing: 'border-box', color: '#111' }}
+                />
+              </div>
+              <button
+                type="submit"
+                style={{ width: '100%', padding: '15px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 700, cursor: 'pointer', letterSpacing: '0.2px' }}
+              >
+                Fortsett
+              </button>
+              {searchError && (
+                <p style={{ marginTop: '16px', color: '#dc2626', fontSize: '14px', textAlign: 'center' }}>{searchError}</p>
+              )}
+              <div style={{ textAlign: 'center', margin: '20px 0', color: '#999', fontSize: '14px' }}>eller</div>
+              <button
+                onClick={() => setBankidForm({ ...bankidForm, isNewUser: true })}
+                style={{ width: '100%', padding: '15px', background: 'transparent', color: '#2563eb', border: 'none', borderRadius: '8px', fontSize: '16px', fontWeight: 600, cursor: 'pointer' }}
+              >
+                Opprett konto gratis
+              </button>
+            </form>
+          )}
         </div>
 
         {/* Admin hidden */}
