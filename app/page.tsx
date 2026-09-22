@@ -596,8 +596,8 @@ export default function Home() {
               onClick={() => setScreen('history')}
               style={{
                 padding: '10px 20px',
-                background: screen === 'history' ? 'var(--accent)' : '#f0f0f0',
-                color: screen === 'history' ? 'white' : 'var(--text-primary)',
+                background: (screen as string) === 'history' ? 'var(--accent)' : '#f0f0f0',
+                color: (screen as string) === 'history' ? 'white' : 'var(--text-primary)',
                 border: 'none',
                 borderRadius: '6px',
                 cursor: 'pointer',
@@ -609,8 +609,8 @@ export default function Home() {
               onClick={() => setScreen('appeals')}
               style={{
                 padding: '10px 20px',
-                background: screen === 'appeals' ? 'var(--accent)' : '#f0f0f0',
-                color: screen === 'appeals' ? 'white' : 'var(--text-primary)',
+                background: (screen as string) === 'appeals' ? 'var(--accent)' : '#f0f0f0',
+                color: (screen as string) === 'appeals' ? 'white' : 'var(--text-primary)',
                 border: 'none',
                 borderRadius: '6px',
                 cursor: 'pointer',
