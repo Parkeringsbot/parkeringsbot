@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { isSupabaseConfigured, supabase, ParkingFine } from '@/lib/supabase'
+import { supabase, signIn, signUp, signOut, getProfile, getFines } from '@/lib/supabase'
 
 /* ── Types ── */
 interface User {
@@ -49,6 +49,8 @@ function sLabel(s: FineStatus) { return s==='ubetalt'?'Ubetalt':s==='pending'?'U
 
 export default function App() {
   const [screen, setScreen]   = useState<Screen>('login')
+  const [loading, setLoading]   = useState(false)
+  const [authError, setAuthError] = useState('')
   const [tab, setTab]         = useState<Tab>('hjem')
   const [filter, setFilter]   = useState<string>('alle')
   const [fines, setFines]     = useState<Fine[]>(SAMPLE_FINES)
@@ -59,7 +61,8 @@ export default function App() {
 
   // Login form
   const [plate, setPlate]     = useState('AB 12345')
-  const [pass, setPass]       = useState('1234')
+  const [loginEmail, setLoginEmail] = useState('')
+  const [pass, setPass]       = useState('')
   // Register form
   const [regName, setRegName]   = useState('')
   const [regEmail, setRegEmail] = useState('')
@@ -81,17 +84,40 @@ export default function App() {
     setTimeout(() => setToastVisible(false), 2200)
   }
 
-  function doLogin() {
-    setUser(u => ({ ...u, plate: plate.toUpperCase()||'AB 12345' }))
-    setScreen('dash'); setTab('hjem')
+  async function doLogin() {
+    setLoading(true); setAuthError('')
+    const { data, error } = await signIn(loginEmail, pass)
+    if (error) { setAuthError('Feil e-post eller passord'); setLoading(false); return }
+    const profile = await getProfile(data.user!.id)
+    const dbFines = await getFines(data.user!.id)
+    setUser({
+      name: profile?.full_name || data.user!.email?.split('@')[0] || 'Bruker',
+      email: data.user!.email || '',
+      plate: plate.toUpperCase() || ''
+    })
+    if (dbFines.length > 0) {
+      setFines(dbFines.map(f => ({
+        id: f.id, loc: f.location||'Ukjent', area: f.area||'', amount: f.amount,
+        date: f.issue_date||'', deadline: f.deadline||'', status: f.status,
+        plate: f.plate, ref: f.reference||''
+      })))
+    }
+    setLoading(false); setScreen('dash'); setTab('hjem')
   }
 
-  function doRegister() {
-    setUser({ name: regName||'Khadar Ahmed', email: regEmail||'khadar@epost.no', plate: (regPlate||'AB 12345').toUpperCase() })
-    setScreen('dash'); setTab('hjem')
+  async function doRegister() {
+    if (!regName || !regEmail || !pass || !regPlate) { setAuthError('Fyll ut alle felt'); return }
+    setLoading(true); setAuthError('')
+    const { data, error } = await signUp(regEmail, pass, regName, regPhone)
+    if (error) { setAuthError(error.message); setLoading(false); return }
+    if (data.user) {
+      await supabase.from('vehicles').insert({ user_id: data.user.id, plate: regPlate.toUpperCase() })
+    }
+    setUser({ name: regName, email: regEmail, plate: regPlate.toUpperCase() })
+    setLoading(false); setScreen('dash'); setTab('hjem')
   }
 
-  function doLogout() { setScreen('login') }
+  async function doLogout() { await signOut(); setScreen('login'); setFines(SAMPLE_FINES) }
 
   function payFine(id: string) {
     setFines(f => f.map(x => x.id===id ? {...x, status:'betalt', deadline:'Betalt'} : x))
@@ -121,14 +147,19 @@ export default function App() {
             <div style={S.authTitle}>Parkeringsbot</div>
             <div style={S.authSub}>Administrer parkeringsbøter enkelt og sikkert</div>
             <div style={S.authCard}>
-              <div style={S.authLabel}>Registreringsnummer</div>
-              <input style={S.authInput} value={plate} onChange={e=>setPlate(e.target.value)} placeholder="AB 12345" autoComplete="off" />
-              <div style={S.authLabel}>BankID-kode / Passord</div>
+              <div style={S.authLabel}>E-post</div>
+              <input style={S.authInput} type="email" value={loginEmail} onChange={e=>setLoginEmail(e.target.value)} placeholder="din@epost.no" autoComplete="email" />
+              <div style={S.authLabel}>Passord</div>
               <input style={S.authInput} type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••" />
-              <button style={S.btnPrimary} onClick={doLogin}>Logg inn med BankID</button>
+              {authError && <div style={{color:'#EF4444',fontSize:13,marginBottom:8}}>{authError}</div>}
+              <button style={{...S.btnPrimary, opacity: loading?0.6:1}} onClick={doLogin} disabled={loading}>{loading?'Logger inn…':'Logg inn'}</button>
               <div style={S.bankidBadge}>
                 <div style={S.bankidDot} />
-                <span style={S.bankidText}>Sikker innlogging via BankID · 2-faktor aktivert</span>
+                <span style={S.bankidText}>Sikker innlogging · Data kryptert</span>
+              </div>
+              <div style={{textAlign:'center',marginTop:12,fontSize:12,color:'#9CA3AF'}}>
+                Ved å logge inn godtar du vår{' '}
+                <a href="/personvern" target="_blank" style={{color:'#254FEB'}}>personvernerklæring</a>
               </div>
             </div>
             <div style={S.authLink}>Ikke konto? <span style={S.authLinkSpan} onClick={()=>setScreen('register')}>Opprett konto gratis</span></div>
@@ -150,7 +181,14 @@ export default function App() {
               <input style={S.authInput} type="tel" value={regPhone} onChange={e=>setRegPhone(e.target.value)} placeholder="+47 900 00 000" />
               <div style={S.authLabel}>Registreringsnummer</div>
               <input style={S.authInput} value={regPlate} onChange={e=>setRegPlate(e.target.value)} placeholder="AB 12345" />
-              <button style={S.btnPrimary} onClick={doRegister}>Opprett konto</button>
+              <div style={S.authLabel}>Passord</div>
+              <input style={S.authInput} type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="Minst 8 tegn" />
+              {authError && <div style={{color:'#EF4444',fontSize:13,marginBottom:8}}>{authError}</div>}
+              <button style={{...S.btnPrimary, opacity: loading?0.6:1}} onClick={doRegister} disabled={loading}>{loading?'Oppretter…':'Opprett konto'}</button>
+              <div style={{textAlign:'center',marginTop:12,fontSize:12,color:'#9CA3AF'}}>
+                Ved registrering godtar du vår{' '}
+                <a href="/personvern" target="_blank" style={{color:'#254FEB'}}>personvernerklæring</a>
+              </div>
             </div>
             <div style={S.authLink}>Har du konto? <span style={S.authLinkSpan} onClick={()=>setScreen('login')}>Logg inn</span></div>
           </div>
