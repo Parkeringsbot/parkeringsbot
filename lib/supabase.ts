@@ -1,9 +1,16 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_KEY!
+/* ── Lazy client — initialiseres kun i nettleseren, ikke under SSR/build ── */
+let _supabase: SupabaseClient | null = null
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+function getSupabase(): SupabaseClient {
+  if (_supabase) return _supabase
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_KEY
+  if (!url || !key) throw new Error('Supabase env vars mangler')
+  _supabase = createClient(url, key)
+  return _supabase
+}
 
 /* ── Types ── */
 export interface Profile {
@@ -45,7 +52,7 @@ export async function signUp(
   fullName: string,
   phone?: string
 ) {
-  return supabase.auth.signUp({
+  return getSupabase().auth.signUp({
     email,
     password,
     options: {
@@ -55,16 +62,16 @@ export async function signUp(
 }
 
 export async function signIn(email: string, password: string) {
-  return supabase.auth.signInWithPassword({ email, password })
+  return getSupabase().auth.signInWithPassword({ email, password })
 }
 
 export async function signOut() {
-  return supabase.auth.signOut()
+  return getSupabase().auth.signOut()
 }
 
 /* ── Data ── */
 export async function getProfile(userId: string): Promise<Profile | null> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('profiles')
     .select('*')
     .eq('id', userId)
@@ -74,7 +81,7 @@ export async function getProfile(userId: string): Promise<Profile | null> {
 }
 
 export async function getVehicles(userId: string): Promise<Vehicle[]> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('vehicles')
     .select('*')
     .eq('user_id', userId)
@@ -83,7 +90,7 @@ export async function getVehicles(userId: string): Promise<Vehicle[]> {
 }
 
 export async function getFines(userId: string): Promise<Fine[]> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('fines')
     .select('*')
     .eq('user_id', userId)
@@ -96,14 +103,14 @@ export async function updateFineStatus(
   fineId: string,
   status: 'ubetalt' | 'pending' | 'betalt'
 ) {
-  return supabase
+  return getSupabase()
     .from('fines')
     .update({ status, updated_at: new Date().toISOString() })
     .eq('id', fineId)
 }
 
 export async function requestAccountDeletion(userId: string, reason?: string) {
-  return supabase.from('deletion_requests').insert({
+  return getSupabase().from('deletion_requests').insert({
     user_id: userId,
     reason: reason || null,
   })
