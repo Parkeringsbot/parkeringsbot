@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { supabase, signIn, signUp, signOut, getProfile, getFines } from '@/lib/supabase'
+import { signIn, signUp, signOut, getProfile, getFines, addVehicle } from '@/lib/supabase'
 
 /* ── Types ── */
 interface User {
@@ -111,7 +111,7 @@ export default function App() {
     const { data, error } = await signUp(regEmail, pass, regName, regPhone)
     if (error) { setAuthError(error.message); setLoading(false); return }
     if (data.user) {
-      await supabase.from('vehicles').insert({ user_id: data.user.id, plate: regPlate.toUpperCase() })
+      await addVehicle(data.user.id, regPlate.toUpperCase())
     }
     setUser({ name: regName, email: regEmail, plate: regPlate.toUpperCase() })
     setLoading(false); setScreen('dash'); setTab('hjem')

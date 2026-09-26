@@ -115,3 +115,9 @@ export async function requestAccountDeletion(userId: string, reason?: string) {
     reason: reason || null,
   })
 }
+
+export async function addVehicle(userId: string, plate: string) {
+  return getSupabase()
+    .from('vehicles')
+    .insert({ user_id: userId, plate: plate.toUpperCase() })
+}
