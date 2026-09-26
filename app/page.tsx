@@ -168,69 +168,37 @@ export default function App() {
             {/* ── HJEM ── */}
             {tab==='hjem' && (
               <div style={S.scroll}>
-                <div style={S.hjemHeader}>
-                  <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between'}}>
-                    <div>
-                      <div style={S.hjemGreeting}>God dag 👋</div>
-                      <div style={S.hjemName}>{user.name}</div>
-                    </div>
-                    <button style={S.notifBtn} onClick={()=>showToast('Ingen nye varsler')}>🔔</button>
-                  </div>
+                {/* Hero */}
+                <div style={S.hjemHero}>
+                  <div style={S.hjemGreeting}>God dag 👋</div>
+                  <div style={S.hjemName}>{user.name}</div>
+                  <div style={S.hjemPlate}>{user.plate}</div>
                 </div>
 
-                {urgentFine && (
-                  <div style={S.alertBanner} onClick={()=>setTab('boter')}>
-                    <span style={{fontSize:28}}>⚠️</span>
-                    <div style={{flex:1}}>
-                      <div style={{color:'#fff',fontSize:13,fontWeight:700}}>Forfaller snart!</div>
-                      <div style={{color:'rgba(255,255,255,.7)',fontSize:12,marginTop:2}}>{urgentFine.loc} — {urgentFine.amount} kr ubetalt</div>
-                    </div>
-                    <span style={{color:'rgba(255,255,255,.6)',fontSize:20}}>›</span>
-                  </div>
-                )}
-
-                <div style={S.kpiRow}>
-                  <div style={S.kpiCard}><div style={{...S.kpiVal,color:'#EF4444'}}>{totalUnpaid}</div><div style={S.kpiLbl}>Ubetalt kr</div></div>
-                  <div style={S.kpiCard}><div style={{...S.kpiVal,color:'#F97316'}}>{unpaidCount}</div><div style={S.kpiLbl}>Åpne bøter</div></div>
-                  <div style={S.kpiCard}><div style={{...S.kpiVal,color:'#22C55E'}}>{totalPaid}</div><div style={S.kpiLbl}>Betalt kr</div></div>
+                {/* Big summary */}
+                <div style={S.summaryCard}>
+                  <div style={S.summaryLabel}>Ubetalt</div>
+                  <div style={S.summaryAmount}>{totalUnpaid} kr</div>
+                  <div style={S.summaryMeta}>{unpaidCount} {unpaidCount===1?'bot':'bøter'} venter på betaling</div>
+                  <button style={S.summaryBtn} onClick={()=>setTab('boter')}>Se mine bøter →</button>
                 </div>
 
-                <div style={S.chartCard}>
-                  <div style={S.chartTitle}>Bøter siste 6 måneder</div>
-                  <div style={{display:'flex',alignItems:'flex-end',gap:6,height:72}}>
-                    {CHART_DATA.map((d,i) => (
-                      <div key={d.month} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
-                        <div style={{width:'100%',borderRadius:'6px 6px 0 0',background:'#254FEB',opacity:i===5?1:0.25,height:Math.max(4,(d.val/maxVal)*72),minHeight:4}} />
-                        <div style={{fontSize:9,color:'#6B7280',fontWeight:600}}>{d.month}</div>
-                      </div>
-                    ))}
+                {/* Status row */}
+                <div style={S.statusRow}>
+                  <div style={S.statusItem}>
+                    <div style={{...S.statusDot,background:'#EF4444'}}/>
+                    <div><div style={S.statusNum}>{unpaidCount}</div><div style={S.statusLbl}>Ubetalt</div></div>
                   </div>
-                </div>
-
-                <div style={S.deadlineCard}>
-                  <div style={S.deadlineTitle}>Betalingsfrister</div>
-                  {fines.filter(f=>f.status==='ubetalt').map((f,i,arr) => (
-                    <div key={f.id} style={{...S.deadlineRow,borderBottom:i<arr.length-1?'1px solid #E5E7EB':'none'}}>
-                      <div style={{width:10,height:10,borderRadius:'50%',background:'#EF4444',flexShrink:0}} />
-                      <div style={{flex:1}}>
-                        <div style={{fontSize:13,fontWeight:600,color:'#374151'}}>{f.loc}</div>
-                        <div style={{fontSize:11,color:'#6B7280',marginTop:1}}>Forfaller {f.deadline}</div>
-                      </div>
-                      <div style={{textAlign:'right'}}>
-                        <div style={{fontSize:14,fontWeight:800,color:'#EF4444'}}>{f.amount} kr</div>
-                        <div style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:20,background:'#FEF2F2',color:'#EF4444',marginTop:3,display:'inline-block'}}>snart</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div style={S.tipCard} onClick={()=>showToast('Åpner betalingsguide…')}>
-                  <span style={{fontSize:28}}>💡</span>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:13,fontWeight:700,color:'#374151'}}>Visste du det?</div>
-                    <div style={{fontSize:12,color:'#6B7280',marginTop:2}}>Du kan betale alle bøter samlet og spare tid</div>
+                  <div style={S.statusDivider}/>
+                  <div style={S.statusItem}>
+                    <div style={{...S.statusDot,background:'#F97316'}}/>
+                    <div><div style={S.statusNum}>{pendingCount}</div><div style={S.statusLbl}>Behandles</div></div>
                   </div>
-                  <span style={{color:'#9CA3AF',fontSize:18}}>›</span>
+                  <div style={S.statusDivider}/>
+                  <div style={S.statusItem}>
+                    <div style={{...S.statusDot,background:'#22C55E'}}/>
+                    <div><div style={S.statusNum}>{fines.filter(f=>f.status==='betalt').length}</div><div style={S.statusLbl}>Betalt</div></div>
+                  </div>
                 </div>
               </div>
             )}
@@ -408,21 +376,21 @@ const S: Record<string,React.CSSProperties> = {
   sbIcons:    { color:'#fff',fontSize:12 },
 
   // Hjem
-  hjemHeader: { background:NAVY,padding:'14px 20px 20px' },
-  hjemGreeting:{ color:'rgba(255,255,255,.6)',fontSize:13 },
-  hjemName:   { color:'#fff',fontSize:21,fontWeight:800,marginTop:2 },
-  notifBtn:   { width:38,height:38,borderRadius:'50%',background:'rgba(255,255,255,.1)',border:'none',cursor:'pointer',color:'#fff',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 },
-  alertBanner:{ margin:'16px 16px 0',background:'linear-gradient(135deg,#7C3AED 0%,#4F46E5 100%)',borderRadius:16,padding:'14px 16px',display:'flex',alignItems:'center',gap:12,cursor:'pointer',boxShadow:'0 4px 16px rgba(79,70,229,.3)' },
-  kpiRow:     { display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,margin:'14px 16px 0' },
-  kpiCard:    { background:'#fff',border:'1px solid #E5E7EB',borderRadius:14,padding:'14px 12px',textAlign:'center' },
-  kpiVal:     { fontSize:20,fontWeight:800 },
-  kpiLbl:     { fontSize:10,color:'#6B7280',fontWeight:600,textTransform:'uppercase',letterSpacing:'.05em',marginTop:4 },
-  chartCard:  { background:'#fff',border:'1px solid #E5E7EB',borderRadius:16,margin:'14px 16px 0',padding:16 },
-  chartTitle: { fontSize:14,fontWeight:700,color:'#374151',marginBottom:14 },
-  deadlineCard:{ background:'#fff',border:'1px solid #E5E7EB',borderRadius:16,margin:'14px 16px 0',padding:16 },
-  deadlineTitle:{ fontSize:14,fontWeight:700,color:'#374151',marginBottom:12 },
-  deadlineRow:{ display:'flex',alignItems:'center',gap:12,padding:'8px 0' },
-  tipCard:    { background:'#fff',border:'1px solid #E5E7EB',borderRadius:14,margin:'14px 16px 16px',padding:'14px 16px',display:'flex',alignItems:'center',gap:12,cursor:'pointer' },
+  hjemHero:     { background:`linear-gradient(160deg,${NAVY} 0%,${NAVY2} 100%)`,padding:'28px 24px 36px' },
+  hjemGreeting: { color:'rgba(255,255,255,.5)',fontSize:13,marginBottom:4 },
+  hjemName:     { color:'#fff',fontSize:26,fontWeight:800,letterSpacing:'-.3px' },
+  hjemPlate:    { color:'rgba(255,255,255,.4)',fontSize:13,marginTop:6,fontWeight:500 },
+  summaryCard:  { margin:'20px 16px 0',background:'#fff',borderRadius:20,padding:'32px 24px',boxShadow:'0 4px 20px rgba(0,0,0,.07)',border:'1px solid #E5E7EB',textAlign:'center' as const },
+  summaryLabel: { fontSize:12,fontWeight:700,textTransform:'uppercase' as const,letterSpacing:'.08em',color:'#9CA3AF' },
+  summaryAmount:{ fontSize:52,fontWeight:800,color:'#EF4444',letterSpacing:'-1.5px',margin:'8px 0 6px',lineHeight:1 },
+  summaryMeta:  { fontSize:14,color:'#6B7280',marginBottom:24 },
+  summaryBtn:   { width:'100%',background:`linear-gradient(135deg,${BLUE} 0%,${BLUE3} 100%)`,color:'#fff',border:'none',borderRadius:14,fontSize:15,fontWeight:700,padding:'14px',cursor:'pointer',fontFamily:'inherit',boxShadow:'0 4px 16px rgba(37,79,235,.3)' },
+  statusRow:    { display:'flex',alignItems:'center',background:'#fff',borderRadius:16,margin:'12px 16px 0',border:'1px solid #E5E7EB',overflow:'hidden' },
+  statusItem:   { flex:1,display:'flex',alignItems:'center',gap:10,padding:'16px',justifyContent:'center' },
+  statusDot:    { width:10,height:10,borderRadius:'50%',flexShrink:0 },
+  statusNum:    { fontSize:18,fontWeight:800,color:'#374151' },
+  statusLbl:    { fontSize:11,color:'#9CA3AF',fontWeight:500,marginTop:1 },
+  statusDivider:{ width:1,height:40,background:'#E5E7EB',flexShrink:0 },
 
   // Bøter
   boterTopbar:{ background:NAVY,padding:'14px 20px 16px' },
