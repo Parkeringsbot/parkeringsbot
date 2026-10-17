@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from 'react'
 import {
   signIn, signUp, signOut, getCurrentUser, getProfile, getVehicles, getFines,
-  isSupabaseConfigured, formatPlate, normalizePlate,
-  type FineStatus, type Fine as DbFine,
+  isSupabaseConfigured, formatPlate, normalizePlate, lookupVehicleInfo,
+  type FineStatus, type Fine as DbFine, type VehicleInfo,
 } from '@/lib/supabase'
 
 /* ── Types ── */
@@ -59,6 +59,9 @@ export default function App() {
   const [time, setTime]       = useState('')
   const [user, setUser]       = useState(EMPTY_USER)
   const [info, setInfo]       = useState('')
+  const [vehicle, setVehicle] = useState<VehicleInfo | null>(null)
+  const [vehicleState, setVehicleState] = useState<'idle'|'loading'|'done'|'error'>('idle')
+  const [vehicleError, setVehicleError] = useState('')
 
   // Login form
   const [loginEmail, setLoginEmail] = useState('')
@@ -89,6 +92,17 @@ export default function App() {
     if (!isSupabaseConfigured()) return
     getCurrentUser().then(u => { if (u) loadUserData(u.id, u.email || '') }).catch(() => {})
   }, [])
+
+  async function loadVehicle(plate: string) {
+    if (!plate) { setVehicle(null); setVehicleState('idle'); return }
+    setVehicleState('loading'); setVehicleError('')
+    const res = await lookupVehicleInfo(plate)
+    if (res.vehicle) { setVehicle(res.vehicle); setVehicleState('done') }
+    else { setVehicle(null); setVehicleError(res.error || 'Kunne ikke hente kjøretøyinfo.'); setVehicleState('error') }
+  }
+
+  // Hent kjøretøyinfo fra Statens vegvesen når skiltet er kjent
+  useEffect(() => { if (screen==='dash') loadVehicle(user.plate) }, [screen, user.plate])
 
   async function loadUserData(userId: string, email: string) {
     const [profile, vehicles, dbFines] = await Promise.all([getProfile(userId), getVehicles(userId), getFines()])
@@ -150,7 +164,7 @@ export default function App() {
 
   async function doLogout() {
     try { await signOut() } catch {}
-    setUser(EMPTY_USER); setFines([]); setScreen('login')
+    setUser(EMPTY_USER); setFines([]); setVehicle(null); setVehicleState('idle'); setScreen('login')
   }
 
   const filtered    = filter==='alle' ? fines : fines.filter(f => f.status===filter)
@@ -158,6 +172,23 @@ export default function App() {
   const unpaidCount = fines.filter(f=>f.status==='ubetalt').length
   const totalPaid   = fines.filter(f=>f.status==='betalt').reduce((s,f)=>s+f.amount,0)
   const pendingCount= fines.filter(f=>f.status==='pending').length
+  const today = new Date().toISOString().slice(0,10)
+  const vehicleRows: { icon:string, label:string, val:string, color?:string }[] =
+    vehicleState==='loading' ? [{ icon:'⏳', label:'Henter info fra Statens vegvesen …', val:'' }]
+    : vehicleState==='error' ? [{ icon:'⚠️', label:vehicleError, val:'', color:'#B91C1C' }]
+    : vehicle ? [
+        ...(vehicle.make||vehicle.model ? [{ icon:'🏷️', label:'Merke og modell', val:[vehicle.make,vehicle.model].filter(Boolean).join(' ') }] : []),
+        ...(vehicle.vehicleType ? [{ icon:'ℹ️', label:'Type', val:vehicle.vehicleType }] : []),
+        ...(vehicle.color ? [{ icon:'🎨', label:'Farge', val:vehicle.color }] : []),
+        ...(vehicle.fuel ? [{ icon:'⛽', label:'Drivstoff', val:vehicle.fuel }] : []),
+        ...(vehicle.firstRegistered ? [{ icon:'📅', label:'Først registrert', val:fmtDate(vehicle.firstRegistered) }] : []),
+        ...(vehicle.nextInspection ? [ vehicle.nextInspection < today
+            ? { icon:'⚠️', label:'EU-kontroll (fristen er passert)', val:fmtDate(vehicle.nextInspection), color:'#B91C1C' }
+            : { icon:'✅', label:'Neste EU-kontroll', val:fmtDate(vehicle.nextInspection) } ] : []),
+        ...(vehicle.registrationStatus ? [{ icon:'📄', label:'Status', val:vehicle.registrationStatus }] : []),
+        { icon:'', label:'Kilde: Statens vegvesen', val:'', color:'#4B5563' },
+      ]
+    : []
   const initials    = user.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()
   const urgentFine  = fines.find(f=>f.status==='ubetalt')
 
@@ -356,7 +387,7 @@ export default function App() {
                 {[
                   { title:'Kjøretøy', rows:[
                     { icon:'🚗', label:'Registreringsnummer', val:user.plate || 'Ikke lagt til' },
-                    { icon:'➕', label:'Legg til kjøretøy',   val:'' },
+                    ...vehicleRows,
                   ]},
                   { title:'Kontaktinformasjon', rows:[
                     { icon:'✉️', label:'E-post',  val:user.email },
@@ -374,8 +405,8 @@ export default function App() {
                       <div key={row.label} onClick={()=>showToast(row.label)}
                         style={{...S.settingsRow,borderBottom:i<arr.length-1?'1px solid #E5E7EB':'none'}}>
                         <span style={{fontSize:20,marginRight:12}}>{row.icon}</span>
-                        <span style={{flex:1,fontSize:15,color:'#374151',fontWeight:500}}>{row.label}</span>
-                        {row.val && <span style={{fontSize:13,color:'#6B7280',marginRight:8}}>{row.val}</span>}
+                        <span style={{flex:1,fontSize:15,color:(row as {color?:string}).color||'#374151',fontWeight:500}}>{row.label}</span>
+                        {row.val && <span style={{fontSize:13,color:(row as {color?:string}).color||'#4B5563',marginRight:8,textAlign:'right'}}>{row.val}</span>}
                         <span style={{color:'#D1D5DB',fontSize:12}}>›</span>
                       </div>
                     ))}

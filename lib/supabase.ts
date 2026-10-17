@@ -1,15 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-/* ── Supabase-prosjekt «Parkeringsbot» ──
-   Publishable-nøkkelen er laget for å være offentlig (den havner uansett i
-   nettleserens kode); dataene beskyttes av RLS-reglene i databasen.
-   Miljøvariablene overstyrer standardverdiene når de er satt.
-   iOS-appen bruker de samme verdiene. */
-const DEFAULT_SUPABASE_URL = 'https://jkvlbkjodxthdcwthszp.supabase.co'
-const DEFAULT_SUPABASE_KEY = 'sb_publishable_nqBF2pnFImo84VHeX4aEZA_sCYqDwmN'
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY || DEFAULT_SUPABASE_KEY
+import { SUPABASE_URL, SUPABASE_KEY } from './supabase-config'
 
 /* ── Lazy client — initialiseres kun i nettleseren, ikke under SSR/build ── */
 let _supabase: SupabaseClient | null = null
@@ -147,4 +138,34 @@ export async function requestAccountDeletion(userId: string, reason?: string) {
     user_id: userId,
     reason: reason || null,
   })
+}
+
+/* ── Kjøretøyinfo fra Statens vegvesen (via vår egen server, /api/kjoretoy) ── */
+export interface VehicleInfo {
+  plate: string
+  make: string | null
+  model: string | null
+  vehicleType: string | null
+  color: string | null
+  fuel: string | null
+  registrationStatus: string | null
+  firstRegistered: string | null
+  nextInspection: string | null
+  lastInspection: string | null
+}
+
+export async function lookupVehicleInfo(plate: string): Promise<{ vehicle?: VehicleInfo; error?: string }> {
+  const { data } = await getSupabase().auth.getSession()
+  const token = data.session?.access_token
+  if (!token) return { error: 'Du må være logget inn.' }
+  try {
+    const res = await fetch(`/api/kjoretoy?skilt=${encodeURIComponent(normalizePlate(plate))}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) return { error: body.error || 'Kunne ikke hente kjøretøyinfo.' }
+    return { vehicle: body.vehicle as VehicleInfo }
+  } catch {
+    return { error: 'Ingen kontakt med serveren. Sjekk internettforbindelsen.' }
+  }
 }
