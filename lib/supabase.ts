@@ -1,17 +1,28 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
+/* ── Supabase-prosjekt «Parkeringsbot» ──
+   Publishable-nøkkelen er laget for å være offentlig (den havner uansett i
+   nettleserens kode); dataene beskyttes av RLS-reglene i databasen.
+   Miljøvariablene overstyrer standardverdiene når de er satt.
+   iOS-appen bruker de samme verdiene. */
+const DEFAULT_SUPABASE_URL = 'https://jkvlbkjodxthdcwthszp.supabase.co'
+const DEFAULT_SUPABASE_KEY = 'sb_publishable_nqBF2pnFImo84VHeX4aEZA_sCYqDwmN'
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_KEY || DEFAULT_SUPABASE_KEY
+
 /* ── Lazy client — initialiseres kun i nettleseren, ikke under SSR/build ── */
 let _supabase: SupabaseClient | null = null
 
 export function isSupabaseConfigured(): boolean {
-  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_KEY)
+  return Boolean(SUPABASE_URL && SUPABASE_KEY)
 }
 
 function getSupabase(): SupabaseClient {
   if (_supabase) return _supabase
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.NEXT_PUBLIC_SUPABASE_KEY
-  if (!url || !key) throw new Error('Supabase env vars mangler (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_KEY)')
+  const url = SUPABASE_URL
+  const key = SUPABASE_KEY
+  if (!url || !key) throw new Error('Supabase-adresse eller -nøkkel mangler')
   _supabase = createClient(url, key)
   return _supabase
 }
