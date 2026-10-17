@@ -1,18 +1,13 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { signIn, signUp, signOut, getProfile, getFines, addVehicle } from '@/lib/supabase'
+import {
+  signIn, signUp, signOut, getCurrentUser, getProfile, getVehicles, getFines,
+  isSupabaseConfigured, formatPlate, normalizePlate,
+  type FineStatus, type Fine as DbFine,
+} from '@/lib/supabase'
 
 /* ── Types ── */
-interface User {
-  id: string
-  email: string
-  phone: string
-  name: string
-  license_plate: string
-}
-
-type FineStatus = 'ubetalt' | 'pending' | 'betalt'
 
 interface Fine {
   id: string
@@ -29,23 +24,28 @@ interface Fine {
 type Tab = 'hjem' | 'boter' | 'profil'
 type Screen = 'login' | 'register' | 'dash'
 
-/* ── Sample data ── */
-const SAMPLE_FINES: Fine[] = [
-  { id:'1', loc:'Karl Johans gt.', area:'Sentrum, Oslo',   amount:900, date:'15. sep 2026', deadline:'28. sep 2026',       status:'ubetalt', plate:'AB 12345', ref:'PB-2026-001' },
-  { id:'2', loc:'Grünerløkka',     area:'Oslo',            amount:750, date:'10. sep 2026', deadline:'10. okt 2026',       status:'ubetalt', plate:'AB 12345', ref:'PB-2026-002' },
-  { id:'3', loc:'Vippetangen',     area:'Bjørvika, Oslo',  amount:750, date:'5. sep 2026',  deadline:'Under behandling',   status:'pending', plate:'AB 12345', ref:'PB-2026-003' },
-  { id:'4', loc:'Majorstuen',      area:'Oslo',            amount:600, date:'12. aug 2026', deadline:'Betalt',             status:'betalt',  plate:'AB 12345', ref:'PB-2026-004' },
-]
-
-const CHART_DATA = [
-  { month:'apr', val:1 }, { month:'mai', val:2 }, { month:'jun', val:0 },
-  { month:'jul', val:1 }, { month:'aug', val:1 }, { month:'sep', val:3 },
-]
-
 /* ── Helpers ── */
 function sColor(s: FineStatus) { return s==='ubetalt'?'red':s==='pending'?'orange':'green' }
 function sIcon(s: FineStatus)  { return s==='ubetalt'?'🔴':s==='pending'?'🟡':'🟢' }
 function sLabel(s: FineStatus) { return s==='ubetalt'?'Ubetalt':s==='pending'?'Under behandling':'Betalt' }
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso + 'T00:00:00')
+  return isNaN(d.getTime()) ? iso : d.toLocaleDateString('nb-NO', { day:'numeric', month:'short', year:'numeric' })
+}
+
+function toUiFine(f: DbFine): Fine {
+  return {
+    id: f.id, loc: f.location || 'Ukjent sted', area: f.area || '', amount: f.amount,
+    date: fmtDate(f.issue_date),
+    deadline: f.status==='betalt' ? 'Betalt' : f.status==='pending' ? 'Under behandling' : (fmtDate(f.deadline) || 'Ikke satt'),
+    status: f.status, plate: formatPlate(f.plate), ref: f.reference || '',
+  }
+}
+
+const NOT_CONFIGURED = 'Nettsiden er ikke koblet til databasen ennå (Supabase-nøkler mangler).'
+const EMPTY_USER = { name:'', email:'', phone:'', plate:'' }
 
 export default function App() {
   const [screen, setScreen]   = useState<Screen>('login')
@@ -53,14 +53,14 @@ export default function App() {
   const [authError, setAuthError] = useState('')
   const [tab, setTab]         = useState<Tab>('hjem')
   const [filter, setFilter]   = useState<string>('alle')
-  const [fines, setFines]     = useState<Fine[]>(SAMPLE_FINES)
+  const [fines, setFines]     = useState<Fine[]>([])
   const [toast, setToast]     = useState<string>('')
   const [toastVisible, setToastVisible] = useState(false)
   const [time, setTime]       = useState('')
-  const [user, setUser]       = useState({ name:'Khadar Ahmed', email:'khadar@epost.no', plate:'AB 12345' })
+  const [user, setUser]       = useState(EMPTY_USER)
+  const [info, setInfo]       = useState('')
 
   // Login form
-  const [plate, setPlate]     = useState('AB 12345')
   const [loginEmail, setLoginEmail] = useState('')
   const [pass, setPass]       = useState('')
   // Register form
@@ -84,44 +84,73 @@ export default function App() {
     setTimeout(() => setToastVisible(false), 2200)
   }
 
-  async function doLogin() {
-    setLoading(true); setAuthError('')
-    const { data, error } = await signIn(loginEmail, pass)
-    if (error) { setAuthError('Feil e-post eller passord'); setLoading(false); return }
-    const profile = await getProfile(data.user!.id)
-    const dbFines = await getFines(data.user!.id)
+  // Behold innloggingen når siden lastes på nytt
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return
+    getCurrentUser().then(u => { if (u) loadUserData(u.id, u.email || '') }).catch(() => {})
+  }, [])
+
+  async function loadUserData(userId: string, email: string) {
+    const [profile, vehicles, dbFines] = await Promise.all([getProfile(userId), getVehicles(userId), getFines()])
     setUser({
-      name: profile?.full_name || data.user!.email?.split('@')[0] || 'Bruker',
-      email: data.user!.email || '',
-      plate: plate.toUpperCase() || ''
+      name:  profile?.full_name || email.split('@')[0] || 'Bruker',
+      email,
+      phone: profile?.phone || '',
+      plate: vehicles[0] ? formatPlate(vehicles[0].plate) : '',
     })
-    if (dbFines.length > 0) {
-      setFines(dbFines.map(f => ({
-        id: f.id, loc: f.location||'Ukjent', area: f.area||'', amount: f.amount,
-        date: f.issue_date||'', deadline: f.deadline||'', status: f.status,
-        plate: f.plate, ref: f.reference||''
-      })))
+    setFines(dbFines.map(toUiFine))
+    setScreen('dash'); setTab('hjem')
+  }
+
+  async function doLogin() {
+    if (!isSupabaseConfigured()) { setAuthError(NOT_CONFIGURED); return }
+    if (!loginEmail || !pass) { setAuthError('Skriv inn e-post og passord'); return }
+    setLoading(true); setAuthError(''); setInfo('')
+    try {
+      const { data, error } = await signIn(loginEmail.trim(), pass)
+      if (error || !data.user) {
+        setAuthError(error?.message?.includes('Email not confirmed')
+          ? 'Du må bekrefte e-postadressen din først. Sjekk innboksen.'
+          : 'Feil e-post eller passord')
+        return
+      }
+      await loadUserData(data.user.id, data.user.email || '')
+      setPass('')
+    } catch {
+      setAuthError('Kunne ikke koble til. Prøv igjen.')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false); setScreen('dash'); setTab('hjem')
   }
 
   async function doRegister() {
+    if (!isSupabaseConfigured()) { setAuthError(NOT_CONFIGURED); return }
     if (!regName || !regEmail || !pass || !regPlate) { setAuthError('Fyll ut alle felt'); return }
-    setLoading(true); setAuthError('')
-    const { data, error } = await signUp(regEmail, pass, regName, regPhone)
-    if (error) { setAuthError(error.message); setLoading(false); return }
-    if (data.user) {
-      await addVehicle(data.user.id, regPlate.toUpperCase())
+    if (pass.length < 8) { setAuthError('Passordet må ha minst 8 tegn'); return }
+    if (!/^[A-Z0-9]{2,8}$/.test(normalizePlate(regPlate))) { setAuthError('Ugyldig registreringsnummer'); return }
+    setLoading(true); setAuthError(''); setInfo('')
+    try {
+      const { data, error } = await signUp(regEmail.trim(), pass, regName.trim(), regPhone.trim(), regPlate)
+      if (error) { setAuthError(error.message); return }
+      setPass('')
+      if (data.session && data.user) {
+        await loadUserData(data.user.id, data.user.email || '')
+      } else {
+        // E-postbekreftelse er slått på i Supabase
+        setInfo('Kontoen er opprettet. Sjekk e-posten din og bekreft adressen, så kan du logge inn.')
+        setLoginEmail(regEmail.trim())
+        setScreen('login')
+      }
+    } catch {
+      setAuthError('Kunne ikke koble til. Prøv igjen.')
+    } finally {
+      setLoading(false)
     }
-    setUser({ name: regName, email: regEmail, plate: regPlate.toUpperCase() })
-    setLoading(false); setScreen('dash'); setTab('hjem')
   }
 
-  async function doLogout() { await signOut(); setScreen('login'); setFines(SAMPLE_FINES) }
-
-  function payFine(id: string) {
-    setFines(f => f.map(x => x.id===id ? {...x, status:'betalt', deadline:'Betalt'} : x))
-    showToast('Betaling registrert ✓')
+  async function doLogout() {
+    try { await signOut() } catch {}
+    setUser(EMPTY_USER); setFines([]); setScreen('login')
   }
 
   const filtered    = filter==='alle' ? fines : fines.filter(f => f.status===filter)
@@ -130,7 +159,6 @@ export default function App() {
   const totalPaid   = fines.filter(f=>f.status==='betalt').reduce((s,f)=>s+f.amount,0)
   const pendingCount= fines.filter(f=>f.status==='pending').length
   const initials    = user.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()
-  const maxVal      = Math.max(...CHART_DATA.map(d=>d.val), 1)
   const urgentFine  = fines.find(f=>f.status==='ubetalt')
 
   /* ════════════════════════════════════════════
@@ -151,7 +179,8 @@ export default function App() {
               <input style={S.authInput} type="email" value={loginEmail} onChange={e=>setLoginEmail(e.target.value)} placeholder="din@epost.no" autoComplete="email" />
               <div style={S.authLabel}>Passord</div>
               <input style={S.authInput} type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••" />
-              {authError && <div style={{color:'#EF4444',fontSize:13,marginBottom:8}}>{authError}</div>}
+              {info && <div role="status" style={{color:'#86EFAC',fontSize:13,marginBottom:8}}>{info}</div>}
+              {authError && <div role="alert" style={{color:'#FCA5A5',fontSize:13,marginBottom:8}}>{authError}</div>}
               <button style={{...S.btnPrimary, opacity: loading?0.6:1}} onClick={doLogin} disabled={loading}>{loading?'Logger inn…':'Logg inn'}</button>
               <div style={S.bankidBadge}>
                 <div style={S.bankidDot} />
@@ -162,7 +191,7 @@ export default function App() {
                 <a href="/personvern" target="_blank" style={{color:'#254FEB'}}>personvernerklæring</a>
               </div>
             </div>
-            <div style={S.authLink}>Ikke konto? <span style={S.authLinkSpan} onClick={()=>setScreen('register')}>Opprett konto gratis</span></div>
+            <div style={S.authLink}>Ikke konto? <span style={S.authLinkSpan} onClick={()=>{setAuthError('');setInfo('');setScreen('register')}}>Opprett konto gratis</span></div>
           </div>
         )}
 
@@ -183,14 +212,14 @@ export default function App() {
               <input style={S.authInput} value={regPlate} onChange={e=>setRegPlate(e.target.value)} placeholder="AB 12345" />
               <div style={S.authLabel}>Passord</div>
               <input style={S.authInput} type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="Minst 8 tegn" />
-              {authError && <div style={{color:'#EF4444',fontSize:13,marginBottom:8}}>{authError}</div>}
+              {authError && <div role="alert" style={{color:'#FCA5A5',fontSize:13,marginBottom:8}}>{authError}</div>}
               <button style={{...S.btnPrimary, opacity: loading?0.6:1}} onClick={doRegister} disabled={loading}>{loading?'Oppretter…':'Opprett konto'}</button>
               <div style={{textAlign:'center',marginTop:12,fontSize:12,color:'#9CA3AF'}}>
                 Ved registrering godtar du vår{' '}
                 <a href="/personvern" target="_blank" style={{color:'#254FEB'}}>personvernerklæring</a>
               </div>
             </div>
-            <div style={S.authLink}>Har du konto? <span style={S.authLinkSpan} onClick={()=>setScreen('login')}>Logg inn</span></div>
+            <div style={S.authLink}>Har du konto? <span style={S.authLinkSpan} onClick={()=>{setAuthError('');setScreen('login')}}>Logg inn</span></div>
           </div>
         )}
 
@@ -263,7 +292,7 @@ export default function App() {
                 </div>
                 <div style={{paddingBottom:16}}>
                   {filtered.length===0
-                    ? <div style={{textAlign:'center',padding:'48px 16px',color:'#6B7280',fontSize:14}}>Ingen bøter funnet</div>
+                    ? <div style={{textAlign:'center',padding:'48px 16px',color:'#6B7280',fontSize:14}}>{fines.length===0 ? 'Du har ingen registrerte bøter' : 'Ingen bøter funnet'}</div>
                     : filtered.map(f => (
                       <div key={f.id} style={S.fineCard}>
                         <div style={{height:3,background:f.status==='ubetalt'?'#EF4444':f.status==='pending'?'#F97316':'#22C55E'}} />
@@ -297,7 +326,7 @@ export default function App() {
                         </div>
                         <div style={{display:'flex',gap:8,padding:'12px 16px 14px',borderTop:'1px solid #E5E7EB'}}>
                           {f.status!=='betalt'
-                            ? <button style={S.btnPay} onClick={()=>payFine(f.id)}>Betal {f.amount} kr</button>
+                            ? <button style={{...S.btnPay,opacity:.6,cursor:'not-allowed'}} disabled title="Betaling kommer snart">Betal {f.amount} kr · kommer snart</button>
                             : <button style={{...S.btnPay,background:'#F0FDF4',color:'#22C55E',boxShadow:'none'}} disabled>Betalt ✓</button>
                           }
                           <button style={S.btnDetail} onClick={()=>showToast(`Detaljer for ${f.ref}`)}>Detaljer</button>
@@ -326,12 +355,12 @@ export default function App() {
 
                 {[
                   { title:'Kjøretøy', rows:[
-                    { icon:'🚗', label:'Registreringsnummer', val:user.plate },
+                    { icon:'🚗', label:'Registreringsnummer', val:user.plate || 'Ikke lagt til' },
                     { icon:'➕', label:'Legg til kjøretøy',   val:'' },
                   ]},
                   { title:'Kontaktinformasjon', rows:[
                     { icon:'✉️', label:'E-post',  val:user.email },
-                    { icon:'📱', label:'Telefon', val:'+47 900 00 000' },
+                    { icon:'📱', label:'Telefon', val:user.phone || 'Ikke oppgitt' },
                   ]},
                   { title:'Innstillinger', rows:[
                     { icon:'🔔', label:'Varsler',    val:'På' },
