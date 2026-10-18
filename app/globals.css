@@ -1,63 +1,295 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* ════════════════════════════════════════════════════════════════
+   Parkeringsbot – designsystem (samme fargetokens som iOS-appen)
+   Alle tekstfarger har minst 4,5:1 kontrast mot bakgrunnen de brukes
+   på (WCAG 2.1 AA), i både lys og mørk modus.
+   ════════════════════════════════════════════════════════════════ */
+
+:root {
+  color-scheme: light;
+  /* Faste merkefarger (bak hvit tekst i begge moduser) */
+  --navy: #0A1628;
+  --blue: #2564EB;
+  --blue-2: #1C4DD6;
+  --blue-3: #1E3AAF;
+  --link-on-navy: #60A4FA;
+
+  /* Flater og tekst */
+  --bg: #F1F2F7;
+  --card: #FFFFFF;
+  --text: #121212;
+  --label: #374151;
+  --sub: #5C6370;
+  --border: #D1D5DC;
+  --input-bg: #F8F9FB;
+  --input-border: #78808C;
+  --accent: #2564EB;
+  --accent-soft: rgba(37, 100, 235, 0.12);
+
+  /* Status */
+  --red: #B91C1C;      --red-bg: #FEF2F2;
+  --green: #15803D;    --green-bg: #F0FDF4;
+  --orange: #C2410C;   --orange-bg: #FFF7ED;
+
+  --shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  --radius: 14px;
+  --focus: 0 0 0 3px #FFFFFF, 0 0 0 5px #2564EB;
 }
 
-html {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f5f5f5;
-  --text-primary: #000000;
-  --text-secondary: #666666;
-  --border-color: #e0e0e0;
-  --accent: #003366;
-  --danger: #d32f2f;
-  --success: #388e3c;
+/* Mørk modus: når brukeren har valgt «Mørk», eller «System» og maskinen er mørk */
+:root[data-theme='mork'] {
+  --bg: #0D0F14;
+  --card: #1C1F26;
+  --text: #F2F2F7;
+  --label: #C7CCD6;
+  --sub: #A8B0BD;
+  --border: #4D525C;
+  --input-bg: #292B33;
+  --input-border: #808794;
+  --accent: #739EFF;
+  --accent-soft: rgba(115, 158, 255, 0.16);
+  --red: #FA8C8C;      --red-bg: #4D1A1A;
+  --green: #66D98C;    --green-bg: #123D21;
+  --orange: #FAA659;   --orange-bg: #4D2B0F;
+  --shadow: none;
+  --focus: 0 0 0 3px #0D0F14, 0 0 0 5px #739EFF;
+  color-scheme: dark;
 }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='lys']) {
+    --bg: #0D0F14;
+    --card: #1C1F26;
+    --text: #F2F2F7;
+    --label: #C7CCD6;
+    --sub: #A8B0BD;
+    --border: #4D525C;
+    --input-bg: #292B33;
+    --input-border: #808794;
+    --accent: #739EFF;
+    --accent-soft: rgba(115, 158, 255, 0.16);
+    --red: #FA8C8C;      --red-bg: #4D1A1A;
+    --green: #66D98C;    --green-bg: #123D21;
+    --orange: #FAA659;   --orange-bg: #4D2B0F;
+    --shadow: none;
+    --focus: 0 0 0 3px #0D0F14, 0 0 0 5px #739EFF;
+    color-scheme: dark;
+  }
+}
+
+/* ── Grunnoppsett ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 100%; -webkit-text-size-adjust: 100%; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  background: var(--bg-secondary);
-  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
   line-height: 1.5;
+  min-height: 100vh;
 }
 
-a {
-  color: var(--accent);
-  text-decoration: none;
+a { color: var(--accent); text-underline-offset: 2px; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: none; }
+button:disabled { cursor: not-allowed; }
+img, svg { display: block; }
+
+:focus-visible { outline: none; box-shadow: var(--focus); border-radius: 8px; }
+
+.visually-hidden {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
-button {
-  cursor: pointer;
-  border: none;
-  font-family: inherit;
-  font-size: inherit;
+.skip-link {
+  position: absolute; left: 1rem; top: -4rem; z-index: 100;
+  background: var(--card); color: var(--text); padding: 0.75rem 1rem; border-radius: 10px;
+  font-weight: 600; text-decoration: none;
+}
+.skip-link:focus { top: 1rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 
-input,
-textarea,
-select {
-  font-family: inherit;
-  font-size: inherit;
+/* ── Rammeverk ────────────────────────────────────────────────── */
+.app { max-width: 36rem; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); }
+.app main { flex: 1; padding-bottom: 6rem; }
+
+.hero { background: var(--navy); color: #fff; padding: 1.5rem 1.25rem 1.25rem; }
+.hero h1 { font-size: 1.5rem; font-weight: 800; line-height: 1.25; }
+.hero .muted { color: rgba(255, 255, 255, 0.78); font-size: 0.875rem; }
+
+.section { padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+.section-title {
+  font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--label); padding: 0 0.25rem;
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+.card {
+  background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+  border: 1px solid transparent;
+}
+:root[data-theme='mork'] .card { border-color: #2A2E37; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='lys']) .card { border-color: #2A2E37; } }
+.card-pad { padding: 1rem; }
+
+/* ── Innlogging og registrering ───────────────────────────────── */
+.auth { min-height: 100vh; background: var(--navy); color: #fff; display: flex; flex-direction: column; align-items: center; padding: 3rem 1.25rem 2rem; }
+.auth-logo {
+  width: 4.5rem; height: 4.5rem; border-radius: 1.1rem; display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--blue), var(--blue-2)); box-shadow: 0 0 2rem rgba(37, 100, 235, 0.45);
+  font-size: 2rem; font-weight: 800; color: #fff;
+}
+.auth h1 { font-size: 1.75rem; font-weight: 800; margin-top: 1rem; text-align: center; }
+.auth .lead { color: rgba(255, 255, 255, 0.78); font-size: 0.9375rem; margin-top: 0.25rem; text-align: center; }
+.auth-card { width: 100%; max-width: 26rem; margin-top: 2rem; background: var(--card); color: var(--text); border-radius: 1.25rem; padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
+.auth-switch { margin-top: 1.25rem; color: rgba(255, 255, 255, 0.78); font-size: 0.9375rem; text-align: center; }
+.link-on-navy { color: var(--link-on-navy); font-weight: 600; text-decoration: underline; min-height: 2.75rem; padding: 0 0.25rem; }
+.fine-print { font-size: 0.8125rem; color: var(--sub); text-align: center; }
+
+/* ── Skjemaelementer ──────────────────────────────────────────── */
+.field { display: flex; flex-direction: column; gap: 0.375rem; }
+.field label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--label); }
+.field .hint { font-size: 0.8125rem; color: var(--sub); }
+.input, .select {
+  width: 100%; min-height: 2.75rem; padding: 0.7rem 0.85rem; border-radius: 10px;
+  background: var(--input-bg); border: 1.5px solid var(--input-border); color: var(--text); font-size: 1rem;
+}
+.input::placeholder { color: var(--sub); opacity: 1; }
+.input:focus-visible, .select:focus-visible { border-color: var(--accent); }
+.row { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.row > * { flex: 1 1 10rem; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  min-height: 2.75rem; padding: 0.65rem 1.1rem; border-radius: 12px; font-weight: 600; font-size: 1rem; text-decoration: none;
+}
+.btn-primary { background: linear-gradient(90deg, var(--blue), var(--blue-2)); color: #fff; box-shadow: 0 4px 12px rgba(37, 100, 235, 0.3); }
+.btn-primary:disabled { opacity: 0.6; }
+.btn-secondary { background: var(--card); color: var(--accent); border: 1.5px solid var(--accent); }
+.btn-quiet { color: var(--accent); padding-inline: 0.5rem; }
+.btn-danger { background: var(--red-bg); color: var(--red); border: 1.5px solid var(--red); }
+.btn-block { width: 100%; }
+.btn-small { min-height: 2.75rem; padding: 0.4rem 0.8rem; font-size: 0.9375rem; }
+
+.alert { display: flex; gap: 0.5rem; align-items: flex-start; font-size: 0.9375rem; font-weight: 500; color: var(--red); }
+.notice { display: flex; gap: 0.5rem; align-items: flex-start; font-size: 0.9375rem; padding: 0.75rem; border-radius: 10px; background: var(--green-bg); color: var(--green); }
+.alert svg, .notice svg { flex-shrink: 0; margin-top: 0.15rem; }
+
+/* ── Hjem ─────────────────────────────────────────────────────── */
+.summary {
+  margin-top: 1rem; padding: 1rem; border-radius: 1rem; color: #fff;
+  background: linear-gradient(90deg, var(--blue), var(--blue-3));
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem;
+}
+.summary .amount { font-size: 2rem; font-weight: 800; line-height: 1.1; }
+.summary .btn-on-blue { min-height: 2.75rem; padding: 0.5rem 1rem; border-radius: 10px; border: 1.5px solid rgba(255, 255, 255, 0.7); background: rgba(255, 255, 255, 0.15); color: #fff; font-weight: 600; }
+
+/* ── Bøtekort ─────────────────────────────────────────────────── */
+.fine { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.75rem; align-items: center; padding: 0.875rem; }
+.fine-icon { width: 2.75rem; height: 2.75rem; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0; }
+.fine-main { min-width: 0; }
+.fine-plate { font-weight: 700; }
+.fine-meta { font-size: 0.875rem; color: var(--sub); }
+.fine-side { display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; text-align: right; }
+.fine-amount { font-weight: 700; }
+.badge { font-size: 0.75rem; font-weight: 600; padding: 0.125rem 0.5rem; border-radius: 6px; }
+.fine-extra { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; padding-top: 0.75rem; border-top: 1px solid var(--border); font-size: 0.875rem; color: var(--sub); }
+.fine-extra strong { color: var(--text); font-weight: 600; }
+
+.s-ubetalt { color: var(--red); }     .s-ubetalt-bg { background: var(--red-bg); }
+.s-pending { color: var(--orange); }  .s-pending-bg { background: var(--orange-bg); }
+.s-betalt  { color: var(--green); }   .s-betalt-bg  { background: var(--green-bg); }
+
+/* ── Filter ───────────────────────────────────────────────────── */
+.chips { display: flex; gap: 0.5rem; overflow-x: auto; padding: 0.75rem 0 0.25rem; }
+.chip {
+  flex-shrink: 0; min-height: 2.75rem; padding: 0 0.9rem; border-radius: 999px; font-size: 0.9375rem; font-weight: 600;
+  color: rgba(255, 255, 255, 0.92); background: rgba(255, 255, 255, 0.12); border: 1px solid rgba(255, 255, 255, 0.45);
+}
+.chip[aria-pressed='true'] { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+/* ── Lister og rader ──────────────────────────────────────────── */
+.list > * + * { border-top: 1px solid var(--border); }
+.list-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; padding: 0.875rem 1rem; }
+.list-row .grow { flex: 1 1 8rem; min-width: 0; }
+.list-row .value { color: var(--sub); text-align: right; overflow-wrap: anywhere; }
+.row-icon { width: 2rem; height: 2rem; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; background: var(--accent-soft); color: var(--accent); }
+.source { font-size: 0.8125rem; color: var(--sub); padding: 0 0.25rem; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.75rem; }
+.stat { text-align: center; padding: 0.875rem; }
+.stat .value { font-size: 1.25rem; font-weight: 700; }
+.stat .label { font-size: 0.8125rem; color: var(--sub); }
+
+.avatar {
+  width: 4.5rem; height: 4.5rem; border-radius: 50%; display: grid; place-items: center; margin: 0 auto 0.75rem;
+  background: linear-gradient(135deg, var(--blue), var(--blue-2)); color: #fff; font-size: 1.75rem; font-weight: 700;
 }
 
-::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
-}
+/* Segmentvalg (lys/mørk/system) */
+.segmented { display: flex; gap: 0.25rem; padding: 0.25rem; border-radius: 12px; background: var(--input-bg); border: 1px solid var(--border); }
+.segmented label { flex: 1; position: relative; }
+.segmented input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+.segmented span { display: flex; align-items: center; justify-content: center; min-height: 2.5rem; border-radius: 9px; font-weight: 600; color: var(--label); }
+.segmented input:checked + span { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); outline: 1.5px solid var(--accent); }
+.segmented input:focus-visible + span { box-shadow: var(--focus); }
 
-::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 4px;
-}
+/* Bryter (av/på) */
+.switch { position: relative; display: inline-flex; flex-shrink: 0; }
+.switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.switch .track { width: 3.25rem; height: 2rem; border-radius: 999px; background: var(--input-border); position: relative; transition: background 0.15s; }
+.switch .track::after { content: ''; position: absolute; top: 0.2rem; left: 0.2rem; width: 1.6rem; height: 1.6rem; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+.switch input:checked + .track { background: var(--green); }
+.switch input:checked + .track::after { transform: translateX(1.25rem); }
+.switch input:focus-visible + .track { box-shadow: var(--focus); }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-secondary);
+.empty { text-align: center; padding: 3rem 1rem; color: var(--sub); }
+
+/* ── Fanelinje ────────────────────────────────────────────────── */
+.tabbar {
+  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 36rem; z-index: 10;
+  display: flex; background: var(--card); border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
 }
+.tabbar button { flex: 1; min-height: 3.5rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.125rem; font-size: 0.75rem; font-weight: 600; color: var(--sub); }
+.tabbar button[aria-current='page'] { color: var(--accent); }
+
+/* ── Dialog ───────────────────────────────────────────────────── */
+dialog { margin: auto; border: none; border-radius: var(--radius); background: var(--card); color: var(--text); padding: 1.25rem; max-width: min(28rem, calc(100vw - 2rem)); }
+dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+dialog h2 { font-size: 1.25rem; margin-bottom: 0.5rem; }
+
+/* ── Admin ────────────────────────────────────────────────────── */
+.admin { max-width: 64rem; margin: 0 auto; padding-bottom: 3rem; }
+.admin-tabs { display: flex; gap: 0.5rem; padding: 0.75rem 1rem 0; }
+.admin-tabs button { min-height: 2.75rem; padding: 0 1rem; border-radius: 10px; font-weight: 600; color: rgba(255, 255, 255, 0.92); border: 1px solid rgba(255, 255, 255, 0.45); }
+.admin-tabs button[aria-current='page'] { background: var(--blue); border-color: var(--blue); color: #fff; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+th, td { text-align: left; padding: 0.625rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--label); }
+td .select { min-width: 9rem; }
+
+/* ── Personvern (tekstside) ───────────────────────────────────── */
+.doc { max-width: 45rem; margin: 0 auto; padding: 2.5rem 1.5rem; line-height: 1.7; }
+.doc h1 { font-size: 1.75rem; font-weight: 800; margin-bottom: 0.5rem; }
+.doc h2 { font-size: 1.125rem; font-weight: 700; margin: 2rem 0 0.75rem; }
+.doc ul { padding-left: 1.25rem; }
+.doc .muted { color: var(--sub); font-size: 0.875rem; }
+
+/* Veldig smal skjerm eller stor tekst: stable innholdet i bøtekortet */
+@media (max-width: 22rem) {
+  .fine { grid-template-columns: auto minmax(0, 1fr); }
+  .fine-side { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; }
+}
+.fine-extra strong.s-ubetalt { color: var(--red); }
+
+/* Rader som gjør noe når man trykker (som i appen) */
+.action-row { width: 100%; text-align: left; color: var(--text); text-decoration: none; font-weight: 500; min-height: 2.75rem; }
+.action-row:hover { background: var(--accent-soft); }
+.action-row > svg { color: var(--sub); }
+.action-row.danger, .action-row.danger .grow { color: var(--red); }
+.action-row.danger .row-icon { background: var(--red-bg); color: var(--red); }
