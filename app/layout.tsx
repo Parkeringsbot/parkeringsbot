@@ -1,18 +1,24 @@
 import React from 'react'
 import './globals.css'
+import { THEME_INIT_SCRIPT } from '@/lib/theme'
 
 export const metadata = {
-  title: 'Parkeringsbot - Administrer dine parkingsbøter',
-  description: 'Enkel og sikker løsning for parkingsbøter',
+  title: 'Parkeringsbot – håndter parkeringsbøtene dine',
+  description: 'Se og følg opp parkeringsbøtene dine på ett sted.',
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#0A1628',
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="no">
+    <html lang="nb" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body>{children}</body>
     </html>
   )

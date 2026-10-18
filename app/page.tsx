@@ -1,519 +1,605 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  signIn, signUp, signOut, getCurrentUser, getProfile, getVehicles, getFines,
-  isSupabaseConfigured, formatPlate, normalizePlate, lookupVehicleInfo,
-  type FineStatus, type Fine as DbFine, type VehicleInfo,
+  signIn, signUp, signOut, getCurrentUser, getProfile, getVehicles, getFines, addVehicle, removeVehicle,
+  updateProfile, updatePassword, sendPasswordReset, deleteOwnAccount, lookupVehicleInfo,
+  isSupabaseConfigured, formatPlate, isValidPlate, friendlyError,
+  type Fine, type FineStatus, type Profile, type Vehicle, type VehicleInfo,
 } from '@/lib/supabase'
+import { Icon, Field, ErrorText, Notice, ThemePicker, STATUS_LABEL, STATUS_ICON, fmtDate, todayIso, kr } from './ui'
 
-/* ── Types ── */
-
-interface Fine {
-  id: string
-  loc: string
-  area: string
-  amount: number
-  date: string
-  deadline: string
-  status: FineStatus
-  plate: string
-  ref: string
-}
-
+type Screen = 'loading' | 'login' | 'register' | 'forgot' | 'dash'
 type Tab = 'hjem' | 'boter' | 'profil'
-type Screen = 'login' | 'register' | 'dash'
 
-/* ── Helpers ── */
-function sColor(s: FineStatus) { return s==='ubetalt'?'red':s==='pending'?'orange':'green' }
-function sIcon(s: FineStatus)  { return s==='ubetalt'?'🔴':s==='pending'?'🟡':'🟢' }
-function sLabel(s: FineStatus) { return s==='ubetalt'?'Ubetalt':s==='pending'?'Under behandling':'Betalt' }
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return ''
-  const d = new Date(iso + 'T00:00:00')
-  return isNaN(d.getTime()) ? iso : d.toLocaleDateString('nb-NO', { day:'numeric', month:'short', year:'numeric' })
-}
-
-function toUiFine(f: DbFine): Fine {
-  return {
-    id: f.id, loc: f.location || 'Ukjent sted', area: f.area || '', amount: f.amount,
-    date: fmtDate(f.issue_date),
-    deadline: f.status==='betalt' ? 'Betalt' : f.status==='pending' ? 'Under behandling' : (fmtDate(f.deadline) || 'Ikke satt'),
-    status: f.status, plate: formatPlate(f.plate), ref: f.reference || '',
-  }
-}
-
-const NOT_CONFIGURED = 'Nettsiden er ikke koblet til databasen ennå (Supabase-nøkler mangler).'
-const EMPTY_USER = { name:'', email:'', phone:'', plate:'' }
+const NOT_CONFIGURED = 'Nettsiden er ikke koblet til databasen.'
 
 export default function App() {
-  const [screen, setScreen]   = useState<Screen>('login')
-  const [loading, setLoading]   = useState(false)
-  const [authError, setAuthError] = useState('')
-  const [tab, setTab]         = useState<Tab>('hjem')
-  const [filter, setFilter]   = useState<string>('alle')
-  const [fines, setFines]     = useState<Fine[]>([])
-  const [toast, setToast]     = useState<string>('')
-  const [toastVisible, setToastVisible] = useState(false)
-  const [time, setTime]       = useState('')
-  const [user, setUser]       = useState(EMPTY_USER)
-  const [info, setInfo]       = useState('')
-  const [vehicle, setVehicle] = useState<VehicleInfo | null>(null)
-  const [vehicleState, setVehicleState] = useState<'idle'|'loading'|'done'|'error'>('idle')
-  const [vehicleError, setVehicleError] = useState('')
+  const [screen, setScreen] = useState<Screen>('loading')
+  const [tab, setTab] = useState<Tab>('hjem')
+  const [userId, setUserId] = useState('')
+  const [email, setEmail] = useState('')
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [vehicles, setVehicles] = useState<Vehicle[]>([])
+  const [fines, setFines] = useState<Fine[]>([])
+  const [flash, setFlash] = useState('')
 
-  // Login form
-  const [loginEmail, setLoginEmail] = useState('')
-  const [pass, setPass]       = useState('')
-  // Register form
-  const [regName, setRegName]   = useState('')
-  const [regEmail, setRegEmail] = useState('')
-  const [regPhone, setRegPhone] = useState('')
-  const [regPlate, setRegPlate] = useState('')
-
-  useEffect(() => {
-    const tick = () => {
-      const d = new Date()
-      setTime(d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0'))
-    }
-    tick()
-    const iv = setInterval(tick, 30000)
-    return () => clearInterval(iv)
+  const loadUserData = useCallback(async (id: string, mail: string) => {
+    const [p, v, f] = await Promise.all([getProfile(id), getVehicles(id), getFines()])
+    setUserId(id); setEmail(mail); setProfile(p); setVehicles(v); setFines(f)
+    setScreen('dash')
   }, [])
-
-  function showToast(msg: string) {
-    setToast(msg); setToastVisible(true)
-    setTimeout(() => setToastVisible(false), 2200)
-  }
 
   // Behold innloggingen når siden lastes på nytt
   useEffect(() => {
-    if (!isSupabaseConfigured()) return
-    getCurrentUser().then(u => { if (u) loadUserData(u.id, u.email || '') }).catch(() => {})
-  }, [])
+    if (!isSupabaseConfigured()) { setScreen('login'); return }
+    getCurrentUser()
+      .then((u) => (u ? loadUserData(u.id, u.email || '') : setScreen('login')))
+      .catch(() => setScreen('login'))
+  }, [loadUserData])
 
-  async function loadVehicle(plate: string) {
-    if (!plate) { setVehicle(null); setVehicleState('idle'); return }
-    setVehicleState('loading'); setVehicleError('')
-    const res = await lookupVehicleInfo(plate)
-    if (res.vehicle) { setVehicle(res.vehicle); setVehicleState('done') }
-    else { setVehicle(null); setVehicleError(res.error || 'Kunne ikke hente kjøretøyinfo.'); setVehicleState('error') }
+  function loggedOut(message = '') {
+    setUserId(''); setEmail(''); setProfile(null); setVehicles([]); setFines([])
+    setFlash(message); setTab('hjem'); setScreen('login')
   }
 
-  // Hent kjøretøyinfo fra Statens vegvesen når skiltet er kjent
-  useEffect(() => { if (screen==='dash') loadVehicle(user.plate) }, [screen, user.plate])
-
-  async function loadUserData(userId: string, email: string) {
-    const [profile, vehicles, dbFines] = await Promise.all([getProfile(userId), getVehicles(userId), getFines()])
-    setUser({
-      name:  profile?.full_name || email.split('@')[0] || 'Bruker',
-      email,
-      phone: profile?.phone || '',
-      plate: vehicles[0] ? formatPlate(vehicles[0].plate) : '',
-    })
-    setFines(dbFines.map(toUiFine))
-    setScreen('dash'); setTab('hjem')
+  if (screen === 'loading') {
+    return <div className="auth" role="status"><p className="lead">Laster …</p></div>
+  }
+  if (screen === 'login') {
+    return <LoginScreen flash={flash} onDone={loadUserData} onRegister={() => { setFlash(''); setScreen('register') }} onForgot={() => { setFlash(''); setScreen('forgot') }} />
+  }
+  if (screen === 'register') {
+    return <RegisterScreen onDone={loadUserData} onBack={() => setScreen('login')}
+      onNeedsConfirm={(msg) => { setFlash(msg); setScreen('login') }} />
+  }
+  if (screen === 'forgot') {
+    return <ForgotScreen onBack={() => setScreen('login')} />
   }
 
-  async function doLogin() {
-    if (!isSupabaseConfigured()) { setAuthError(NOT_CONFIGURED); return }
-    if (!loginEmail || !pass) { setAuthError('Skriv inn e-post og passord'); return }
-    setLoading(true); setAuthError(''); setInfo('')
-    try {
-      const { data, error } = await signIn(loginEmail.trim(), pass)
-      if (error || !data.user) {
-        setAuthError(error?.message?.includes('Email not confirmed')
-          ? 'Du må bekrefte e-postadressen din først. Sjekk innboksen.'
-          : 'Feil e-post eller passord')
-        return
-      }
-      await loadUserData(data.user.id, data.user.email || '')
-      setPass('')
-    } catch {
-      setAuthError('Kunne ikke koble til. Prøv igjen.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function doRegister() {
-    if (!isSupabaseConfigured()) { setAuthError(NOT_CONFIGURED); return }
-    if (!regName || !regEmail || !pass || !regPlate) { setAuthError('Fyll ut alle felt'); return }
-    if (pass.length < 8) { setAuthError('Passordet må ha minst 8 tegn'); return }
-    if (!/^[A-Z0-9]{2,8}$/.test(normalizePlate(regPlate))) { setAuthError('Ugyldig registreringsnummer'); return }
-    setLoading(true); setAuthError(''); setInfo('')
-    try {
-      const { data, error } = await signUp(regEmail.trim(), pass, regName.trim(), regPhone.trim(), regPlate)
-      if (error) { setAuthError(error.message); return }
-      setPass('')
-      if (data.session && data.user) {
-        await loadUserData(data.user.id, data.user.email || '')
-      } else {
-        // E-postbekreftelse er slått på i Supabase
-        setInfo('Kontoen er opprettet. Sjekk e-posten din og bekreft adressen, så kan du logge inn.')
-        setLoginEmail(regEmail.trim())
-        setScreen('login')
-      }
-    } catch {
-      setAuthError('Kunne ikke koble til. Prøv igjen.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function doLogout() {
-    try { await signOut() } catch {}
-    setUser(EMPTY_USER); setFines([]); setVehicle(null); setVehicleState('idle'); setScreen('login')
-  }
-
-  const filtered    = filter==='alle' ? fines : fines.filter(f => f.status===filter)
-  const totalUnpaid = fines.filter(f=>f.status==='ubetalt').reduce((s,f)=>s+f.amount,0)
-  const unpaidCount = fines.filter(f=>f.status==='ubetalt').length
-  const totalPaid   = fines.filter(f=>f.status==='betalt').reduce((s,f)=>s+f.amount,0)
-  const pendingCount= fines.filter(f=>f.status==='pending').length
-  const today = new Date().toISOString().slice(0,10)
-  const vehicleRows: { icon:string, label:string, val:string, color?:string }[] =
-    vehicleState==='loading' ? [{ icon:'⏳', label:'Henter info fra Statens vegvesen …', val:'' }]
-    : vehicleState==='error' ? [{ icon:'⚠️', label:vehicleError, val:'', color:'#B91C1C' }]
-    : vehicle ? [
-        ...(vehicle.make||vehicle.model ? [{ icon:'🏷️', label:'Merke og modell', val:[vehicle.make,vehicle.model].filter(Boolean).join(' ') }] : []),
-        ...(vehicle.vehicleType ? [{ icon:'ℹ️', label:'Type', val:vehicle.vehicleType }] : []),
-        ...(vehicle.color ? [{ icon:'🎨', label:'Farge', val:vehicle.color }] : []),
-        ...(vehicle.fuel ? [{ icon:'⛽', label:'Drivstoff', val:vehicle.fuel }] : []),
-        ...(vehicle.firstRegistered ? [{ icon:'📅', label:'Først registrert', val:fmtDate(vehicle.firstRegistered) }] : []),
-        ...(vehicle.nextInspection ? [ vehicle.nextInspection < today
-            ? { icon:'⚠️', label:'EU-kontroll (fristen er passert)', val:fmtDate(vehicle.nextInspection), color:'#B91C1C' }
-            : { icon:'✅', label:'Neste EU-kontroll', val:fmtDate(vehicle.nextInspection) } ] : []),
-        ...(vehicle.registrationStatus ? [{ icon:'📄', label:'Status', val:vehicle.registrationStatus }] : []),
-        { icon:'', label:'Kilde: Statens vegvesen', val:'', color:'#4B5563' },
-      ]
-    : []
-  const initials    = user.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()
-  const urgentFine  = fines.find(f=>f.status==='ubetalt')
-
-  /* ════════════════════════════════════════════
-     RENDER
-  ════════════════════════════════════════════ */
   return (
-    <div style={S.app}>
-      <div style={S.phone}>
-
-        {/* ── LOGIN ── */}
-        {screen==='login' && (
-          <div style={S.authBg}>
-            <div style={S.authLogo}>🅿️</div>
-            <div style={S.authTitle}>Parkeringsbot</div>
-            <div style={S.authSub}>Administrer parkeringsbøter enkelt og sikkert</div>
-            <div style={S.authCard}>
-              <div style={S.authLabel}>E-post</div>
-              <input style={S.authInput} type="email" value={loginEmail} onChange={e=>setLoginEmail(e.target.value)} placeholder="din@epost.no" autoComplete="email" />
-              <div style={S.authLabel}>Passord</div>
-              <input style={S.authInput} type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••" />
-              {info && <div role="status" style={{color:'#86EFAC',fontSize:13,marginBottom:8}}>{info}</div>}
-              {authError && <div role="alert" style={{color:'#FCA5A5',fontSize:13,marginBottom:8}}>{authError}</div>}
-              <button style={{...S.btnPrimary, opacity: loading?0.6:1}} onClick={doLogin} disabled={loading}>{loading?'Logger inn…':'Logg inn'}</button>
-              <div style={S.bankidBadge}>
-                <div style={S.bankidDot} />
-                <span style={S.bankidText}>Sikker innlogging · Data kryptert</span>
-              </div>
-              <div style={{textAlign:'center',marginTop:12,fontSize:12,color:'#9CA3AF'}}>
-                Ved å logge inn godtar du vår{' '}
-                <a href="/personvern" target="_blank" style={{color:'#254FEB'}}>personvernerklæring</a>
-              </div>
-            </div>
-            <div style={S.authLink}>Ikke konto? <span style={S.authLinkSpan} onClick={()=>{setAuthError('');setInfo('');setScreen('register')}}>Opprett konto gratis</span></div>
-          </div>
+    <div className="app">
+      <a href="#innhold" className="skip-link">Hopp til innhold</a>
+      <main id="innhold">
+        {tab === 'hjem' && <HomeTab name={profile?.full_name || email.split('@')[0]} fines={fines} onShowFines={() => setTab('boter')} />}
+        {tab === 'boter' && <FinesTab fines={fines} />}
+        {tab === 'profil' && (
+          <ProfileTab
+            userId={userId} email={email} profile={profile} vehicles={vehicles} fines={fines}
+            onProfileChange={setProfile}
+            onVehiclesChange={async () => { setVehicles(await getVehicles(userId)); setFines(await getFines()) }}
+            onLoggedOut={loggedOut}
+          />
         )}
-
-        {/* ── REGISTER ── */}
-        {screen==='register' && (
-          <div style={S.authBg}>
-            <div style={S.authLogo}>🅿️</div>
-            <div style={S.authTitle}>Opprett konto</div>
-            <div style={S.authSub}>Kom i gang på under ett minutt</div>
-            <div style={S.authCard}>
-              <div style={S.authLabel}>Fullt navn</div>
-              <input style={S.authInput} value={regName} onChange={e=>setRegName(e.target.value)} placeholder="Khadar Ahmed" />
-              <div style={S.authLabel}>E-post</div>
-              <input style={S.authInput} type="email" value={regEmail} onChange={e=>setRegEmail(e.target.value)} placeholder="khadar@epost.no" />
-              <div style={S.authLabel}>Telefon</div>
-              <input style={S.authInput} type="tel" value={regPhone} onChange={e=>setRegPhone(e.target.value)} placeholder="+47 900 00 000" />
-              <div style={S.authLabel}>Registreringsnummer</div>
-              <input style={S.authInput} value={regPlate} onChange={e=>setRegPlate(e.target.value)} placeholder="AB 12345" />
-              <div style={S.authLabel}>Passord</div>
-              <input style={S.authInput} type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="Minst 8 tegn" />
-              {authError && <div role="alert" style={{color:'#FCA5A5',fontSize:13,marginBottom:8}}>{authError}</div>}
-              <button style={{...S.btnPrimary, opacity: loading?0.6:1}} onClick={doRegister} disabled={loading}>{loading?'Oppretter…':'Opprett konto'}</button>
-              <div style={{textAlign:'center',marginTop:12,fontSize:12,color:'#9CA3AF'}}>
-                Ved registrering godtar du vår{' '}
-                <a href="/personvern" target="_blank" style={{color:'#254FEB'}}>personvernerklæring</a>
-              </div>
-            </div>
-            <div style={S.authLink}>Har du konto? <span style={S.authLinkSpan} onClick={()=>{setAuthError('');setScreen('login')}}>Logg inn</span></div>
-          </div>
-        )}
-
-        {/* ── DASHBOARD ── */}
-        {screen==='dash' && (
-          <div style={S.dash}>
-            {/* Status bar */}
-            <div style={S.statusbar}>
-              <span style={S.sbTime}>{time}</span>
-              <span style={S.sbIcons}>▲ ● ▌▌</span>
-            </div>
-
-            {/* ── HJEM ── */}
-            {tab==='hjem' && (
-              <div style={S.scroll}>
-                {/* Hero */}
-                <div style={S.hjemHero}>
-                  <div style={S.hjemGreeting}>God dag 👋</div>
-                  <div style={S.hjemName}>{user.name}</div>
-                  <div style={S.hjemPlate}>{user.plate}</div>
-                </div>
-
-                {/* Big summary */}
-                <div style={S.summaryCard}>
-                  <div style={S.summaryLabel}>Ubetalt</div>
-                  <div style={S.summaryAmount}>{totalUnpaid} kr</div>
-                  <div style={S.summaryMeta}>{unpaidCount} {unpaidCount===1?'bot':'bøter'} venter på betaling</div>
-                  <button style={S.summaryBtn} onClick={()=>setTab('boter')}>Se mine bøter →</button>
-                </div>
-
-                {/* Status row */}
-                <div style={S.statusRow}>
-                  <div style={S.statusItem}>
-                    <div style={{...S.statusDot,background:'#EF4444'}}/>
-                    <div><div style={S.statusNum}>{unpaidCount}</div><div style={S.statusLbl}>Ubetalt</div></div>
-                  </div>
-                  <div style={S.statusDivider}/>
-                  <div style={S.statusItem}>
-                    <div style={{...S.statusDot,background:'#F97316'}}/>
-                    <div><div style={S.statusNum}>{pendingCount}</div><div style={S.statusLbl}>Behandles</div></div>
-                  </div>
-                  <div style={S.statusDivider}/>
-                  <div style={S.statusItem}>
-                    <div style={{...S.statusDot,background:'#22C55E'}}/>
-                    <div><div style={S.statusNum}>{fines.filter(f=>f.status==='betalt').length}</div><div style={S.statusLbl}>Betalt</div></div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── BØTER ── */}
-            {tab==='boter' && (
-              <div style={S.scroll}>
-                <div style={S.boterTopbar}>
-                  <div style={{color:'#fff',fontSize:21,fontWeight:800}}>Mine bøter</div>
-                  <div style={{color:'rgba(255,255,255,.55)',fontSize:13,marginTop:2}}>{fines.length} bøter totalt · {unpaidCount} krever handling</div>
-                </div>
-                <div style={S.filterRow}>
-                  {[
-                    {key:'alle',  label:`Alle (${fines.length})`},
-                    {key:'ubetalt', label:`Ubetalt (${fines.filter(f=>f.status==='ubetalt').length})`},
-                    {key:'pending', label:`Under behandling (${pendingCount})`},
-                    {key:'betalt',  label:`Betalt (${fines.filter(f=>f.status==='betalt').length})`},
-                  ].map(c => (
-                    <button key={c.key} onClick={()=>setFilter(c.key)}
-                      style={{...S.chip, ...(filter===c.key ? S.chipActive : {})}}>
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-                <div style={{paddingBottom:16}}>
-                  {filtered.length===0
-                    ? <div style={{textAlign:'center',padding:'48px 16px',color:'#6B7280',fontSize:14}}>{fines.length===0 ? 'Du har ingen registrerte bøter' : 'Ingen bøter funnet'}</div>
-                    : filtered.map(f => (
-                      <div key={f.id} style={S.fineCard}>
-                        <div style={{height:3,background:f.status==='ubetalt'?'#EF4444':f.status==='pending'?'#F97316':'#22C55E'}} />
-                        <div style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px 12px'}}>
-                          <div style={{width:46,height:46,borderRadius:14,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0,
-                            background:f.status==='ubetalt'?'#FEF2F2':f.status==='pending'?'#FFF7ED':'#F0FDF4'}}>
-                            {sIcon(f.status)}
-                          </div>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:15,fontWeight:700,color:'#374151'}}>{f.loc}</div>
-                            <div style={{fontSize:12,color:'#6B7280',marginTop:2}}>{f.area} · {f.date}</div>
-                            <div style={{marginTop:6}}>
-                              <span style={{borderRadius:6,padding:'3px 8px',fontSize:11,fontWeight:700,
-                                background:f.status==='ubetalt'?'#FEF2F2':f.status==='pending'?'#FFF7ED':'#F0FDF4',
-                                color:f.status==='ubetalt'?'#EF4444':f.status==='pending'?'#F97316':'#22C55E'}}>
-                                {sLabel(f.status)}
-                              </span>
-                            </div>
-                          </div>
-                          <div style={{fontSize:22,fontWeight:800,color:'#374151',flexShrink:0}}>{f.amount} kr</div>
-                        </div>
-                        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',borderTop:'1px solid #E5E7EB'}}>
-                          <div style={{padding:'10px 16px',borderRight:'1px solid #E5E7EB'}}>
-                            <div style={{fontSize:10,color:'#6B7280',fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em'}}>Forfallsdato</div>
-                            <div style={{fontSize:13,fontWeight:600,color:f.status==='ubetalt'?'#EF4444':'#6B7280',marginTop:2}}>{f.deadline}</div>
-                          </div>
-                          <div style={{padding:'10px 16px'}}>
-                            <div style={{fontSize:10,color:'#6B7280',fontWeight:700,textTransform:'uppercase',letterSpacing:'.05em'}}>Referanse</div>
-                            <div style={{fontSize:13,fontWeight:600,color:'#374151',marginTop:2}}>{f.ref}</div>
-                          </div>
-                        </div>
-                        <div style={{display:'flex',gap:8,padding:'12px 16px 14px',borderTop:'1px solid #E5E7EB'}}>
-                          {f.status!=='betalt'
-                            ? <button style={{...S.btnPay,opacity:.6,cursor:'not-allowed'}} disabled title="Betaling kommer snart">Betal {f.amount} kr · kommer snart</button>
-                            : <button style={{...S.btnPay,background:'#F0FDF4',color:'#22C55E',boxShadow:'none'}} disabled>Betalt ✓</button>
-                          }
-                          <button style={S.btnDetail} onClick={()=>showToast(`Detaljer for ${f.ref}`)}>Detaljer</button>
-                        </div>
-                      </div>
-                    ))
-                  }
-                </div>
-              </div>
-            )}
-
-            {/* ── PROFIL ── */}
-            {tab==='profil' && (
-              <div style={S.scroll}>
-                <div style={S.profileHeader}>
-                  <div style={S.avatarLg}>{initials}</div>
-                  <div style={{color:'#fff',fontSize:20,fontWeight:800,marginTop:12}}>{user.name}</div>
-                  <div style={{color:'rgba(255,255,255,.6)',fontSize:13,marginTop:4,display:'flex',alignItems:'center',gap:6}}>
-                    Registrert: <span style={{background:'rgba(255,255,255,.12)',borderRadius:6,padding:'2px 8px',fontSize:12,fontWeight:700,color:'#fff',letterSpacing:'.05em'}}>{user.plate}</span>
-                  </div>
-                </div>
-                <div style={{display:'flex',gap:12,padding:'0 16px',marginTop:-18}}>
-                  <div style={S.statCard}><div style={S.statVal}>{fines.length}</div><div style={S.statLbl}>Totalt bøter</div></div>
-                  <div style={S.statCard}><div style={S.statVal}>{totalPaid} kr</div><div style={S.statLbl}>Betalt totalt</div></div>
-                </div>
-
-                {[
-                  { title:'Kjøretøy', rows:[
-                    { icon:'🚗', label:'Registreringsnummer', val:user.plate || 'Ikke lagt til' },
-                    ...vehicleRows,
-                  ]},
-                  { title:'Kontaktinformasjon', rows:[
-                    { icon:'✉️', label:'E-post',  val:user.email },
-                    { icon:'📱', label:'Telefon', val:user.phone || 'Ikke oppgitt' },
-                  ]},
-                  { title:'Innstillinger', rows:[
-                    { icon:'🔔', label:'Varsler',    val:'På' },
-                    { icon:'🔒', label:'Personvern', val:'' },
-                    { icon:'🏦', label:'BankID',     val:'Tilkoblet' },
-                  ]},
-                ].map(section => (
-                  <div key={section.title} style={S.settingsSection}>
-                    <div style={S.sectionTitle}>{section.title}</div>
-                    {section.rows.map((row,i,arr) => (
-                      <div key={row.label} onClick={()=>showToast(row.label)}
-                        style={{...S.settingsRow,borderBottom:i<arr.length-1?'1px solid #E5E7EB':'none'}}>
-                        <span style={{fontSize:20,marginRight:12}}>{row.icon}</span>
-                        <span style={{flex:1,fontSize:15,color:(row as {color?:string}).color||'#374151',fontWeight:500}}>{row.label}</span>
-                        {row.val && <span style={{fontSize:13,color:(row as {color?:string}).color||'#4B5563',marginRight:8,textAlign:'right'}}>{row.val}</span>}
-                        <span style={{color:'#D1D5DB',fontSize:12}}>›</span>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-
-                <button style={S.btnLogout} onClick={doLogout}>Logg ut</button>
-                <div style={{height:20}} />
-              </div>
-            )}
-
-            {/* Tab bar */}
-            <div style={S.tabbar}>
-              {([['hjem','🏠','Hjem'],['boter','🅿️','Bøter'],['profil','👤','Profil']] as const).map(([t,icon,label]) => (
-                <button key={t} style={S.tabItem} onClick={()=>setTab(t)}>
-                  <span style={{fontSize:22,lineHeight:1}}>{icon}</span>
-                  <span style={{fontSize:10,fontWeight:tab===t?700:500,color:tab===t?'#254FEB':'#6B7280'}}>{label}</span>
-                  <div style={{width:5,height:5,borderRadius:'50%',background:'#254FEB',visibility:tab===t?'visible':'hidden'}} />
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Toast */}
-        <div style={{...S.toast,opacity:toastVisible?1:0}}>{toast}</div>
-      </div>
+      </main>
+      <nav className="tabbar" aria-label="Hovedmeny">
+        {([['hjem', 'home', 'Hjem'], ['boter', 'ticket', 'Bøter'], ['profil', 'user', 'Profil']] as const).map(([t, icon, label]) => (
+          <button key={t} type="button" aria-current={tab === t ? 'page' : undefined} onClick={() => { setTab(t); window.scrollTo(0, 0) }}>
+            <Icon name={icon} size={24} />
+            {label}
+          </button>
+        ))}
+      </nav>
     </div>
   )
 }
 
-/* ════════════════════════════════════════════
-   STYLES (inline — no CSS modules needed)
-════════════════════════════════════════════ */
-const NAVY  = '#0A1628'
-const NAVY2 = '#0F1E38'
-const BLUE  = '#254FEB'
-const BLUE3 = '#1E3AAF'
+/* ════════════════════ Innlogging ════════════════════ */
+function AuthShell({ title, lead, children, footer }: { title: string; lead?: string; children: React.ReactNode; footer?: React.ReactNode }) {
+  return (
+    <main className="auth">
+      <div className="auth-logo" aria-hidden="true">P</div>
+      <h1>{title}</h1>
+      {lead && <p className="lead">{lead}</p>}
+      <div className="auth-card">{children}</div>
+      {footer && <div className="auth-switch">{footer}</div>}
+    </main>
+  )
+}
 
-const S: Record<string,React.CSSProperties> = {
-  app:        { display:'flex',justifyContent:'center',alignItems:'flex-start',minHeight:'100vh',background:'#d8dce8',padding:'24px 16px',fontFamily:"'Inter',system-ui,sans-serif" },
-  phone:      { width:'100%',maxWidth:430,minHeight:'min(812px,90svh)',display:'flex',flexDirection:'column',background:'#F1F3F7',overflow:'hidden',borderRadius:40,boxShadow:'0 40px 80px rgba(0,0,0,.3)',position:'relative' },
+function LoginScreen({ flash, onDone, onRegister, onForgot }: {
+  flash: string; onDone: (id: string, email: string) => Promise<void>; onRegister: () => void; onForgot: () => void
+}) {
+  const [mail, setMail] = useState('')
+  const [pass, setPass] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
 
-  // Auth
-  authBg:     { flex:1,background:NAVY,display:'flex',flexDirection:'column',alignItems:'center',padding:'0 28px 36px',overflowY:'auto' },
-  authLogo:   { marginTop:60,width:72,height:72,background:BLUE,borderRadius:20,display:'flex',alignItems:'center',justifyContent:'center',fontSize:36,boxShadow:'0 8px 24px rgba(37,79,235,.4)' },
-  authTitle:  { color:'#fff',fontSize:26,fontWeight:800,marginTop:20,letterSpacing:'-.5px' },
-  authSub:    { color:'rgba(255,255,255,.55)',fontSize:14,marginTop:6,textAlign:'center' },
-  authCard:   { background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.1)',borderRadius:20,padding:24,width:'100%',marginTop:32 },
-  authLabel:  { color:'rgba(255,255,255,.7)',fontSize:12,fontWeight:600,textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8 },
-  authInput:  { width:'100%',background:'rgba(255,255,255,.08)',border:'1.5px solid rgba(255,255,255,.15)',borderRadius:12,color:'#fff',fontSize:15,padding:'13px 16px',outline:'none',fontFamily:'inherit',marginBottom:16,display:'block' },
-  bankidBadge:{ display:'flex',alignItems:'center',gap:8,background:'rgba(255,255,255,.06)',border:'1px solid rgba(255,255,255,.12)',borderRadius:10,padding:'10px 14px',marginTop:16 },
-  bankidDot:  { width:8,height:8,borderRadius:'50%',background:'#22C55E',flexShrink:0 },
-  bankidText: { color:'rgba(255,255,255,.6)',fontSize:12 },
-  authLink:   { color:'rgba(255,255,255,.55)',fontSize:14,marginTop:20,textAlign:'center',cursor:'pointer' },
-  authLinkSpan:{ color:BLUE,fontWeight:600,textDecoration:'underline' },
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!isSupabaseConfigured()) return setError(NOT_CONFIGURED)
+    if (!mail || !pass) return setError('Skriv inn e-post og passord.')
+    setBusy(true); setError('')
+    try {
+      const { data, error } = await signIn(mail.trim(), pass)
+      if (error || !data.user) return setError(friendlyError(error?.message, 'Feil e-post eller passord.'))
+      await onDone(data.user.id, data.user.email || '')
+    } catch {
+      setError('Kunne ikke koble til. Prøv igjen.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
-  btnPrimary: { width:'100%',background:`linear-gradient(135deg,${BLUE} 0%,${BLUE3} 100%)`,color:'#fff',border:'none',borderRadius:14,fontSize:15,fontWeight:700,padding:15,cursor:'pointer',fontFamily:'inherit',boxShadow:'0 4px 16px rgba(37,79,235,.4)',display:'block' },
+  return (
+    <AuthShell title="Parkeringsbot" lead="Håndter parkeringsbøtene dine enkelt og digitalt"
+      footer={<>Har du ikke konto? <button type="button" className="link-on-navy" onClick={onRegister}>Opprett konto gratis</button></>}>
+      <form onSubmit={submit} noValidate style={{ display: 'contents' }}>
+        <Notice message={flash} />
+        <Field label="E-post" type="email" autoComplete="email" value={mail} onChange={(e) => setMail(e.target.value)} placeholder="din@epost.no" required />
+        <Field label="Passord" type="password" autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)} required />
+        <ErrorText message={error} />
+        <button className="btn btn-primary btn-block" type="submit" disabled={busy}>{busy ? 'Logger inn …' : 'Logg inn'}</button>
+        <button type="button" className="btn btn-quiet" onClick={onForgot}>Glemt passord?</button>
+        <p className="fine-print">Ved å logge inn godtar du <a href="/personvern">personvernerklæringen</a>.</p>
+      </form>
+    </AuthShell>
+  )
+}
 
-  // Dashboard
-  dash:       { flex:1,display:'flex',flexDirection:'column',overflow:'hidden' },
-  scroll:     { flex:1,overflowY:'auto' },
-  statusbar:  { background:NAVY,height:44,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 20px',flexShrink:0 },
-  sbTime:     { color:'#fff',fontSize:15,fontWeight:600 },
-  sbIcons:    { color:'#fff',fontSize:12 },
+function RegisterScreen({ onDone, onBack, onNeedsConfirm }: {
+  onDone: (id: string, email: string) => Promise<void>; onBack: () => void; onNeedsConfirm: (msg: string) => void
+}) {
+  const [name, setName] = useState('')
+  const [mail, setMail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [plate, setPlate] = useState('')
+  const [pass, setPass] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
 
-  // Hjem
-  hjemHero:     { background:`linear-gradient(160deg,${NAVY} 0%,${NAVY2} 100%)`,padding:'28px 24px 36px' },
-  hjemGreeting: { color:'rgba(255,255,255,.5)',fontSize:13,marginBottom:4 },
-  hjemName:     { color:'#fff',fontSize:26,fontWeight:800,letterSpacing:'-.3px' },
-  hjemPlate:    { color:'rgba(255,255,255,.4)',fontSize:13,marginTop:6,fontWeight:500 },
-  summaryCard:  { margin:'20px 16px 0',background:'#fff',borderRadius:20,padding:'32px 24px',boxShadow:'0 4px 20px rgba(0,0,0,.07)',border:'1px solid #E5E7EB',textAlign:'center' as const },
-  summaryLabel: { fontSize:12,fontWeight:700,textTransform:'uppercase' as const,letterSpacing:'.08em',color:'#9CA3AF' },
-  summaryAmount:{ fontSize:52,fontWeight:800,color:'#EF4444',letterSpacing:'-1.5px',margin:'8px 0 6px',lineHeight:1 },
-  summaryMeta:  { fontSize:14,color:'#6B7280',marginBottom:24 },
-  summaryBtn:   { width:'100%',background:`linear-gradient(135deg,${BLUE} 0%,${BLUE3} 100%)`,color:'#fff',border:'none',borderRadius:14,fontSize:15,fontWeight:700,padding:'14px',cursor:'pointer',fontFamily:'inherit',boxShadow:'0 4px 16px rgba(37,79,235,.3)' },
-  statusRow:    { display:'flex',alignItems:'center',background:'#fff',borderRadius:16,margin:'12px 16px 0',border:'1px solid #E5E7EB',overflow:'hidden' },
-  statusItem:   { flex:1,display:'flex',alignItems:'center',gap:10,padding:'16px',justifyContent:'center' },
-  statusDot:    { width:10,height:10,borderRadius:'50%',flexShrink:0 },
-  statusNum:    { fontSize:18,fontWeight:800,color:'#374151' },
-  statusLbl:    { fontSize:11,color:'#9CA3AF',fontWeight:500,marginTop:1 },
-  statusDivider:{ width:1,height:40,background:'#E5E7EB',flexShrink:0 },
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!isSupabaseConfigured()) return setError(NOT_CONFIGURED)
+    if (!name.trim() || !mail.trim() || !plate.trim() || !pass) return setError('Fyll ut navn, e-post, registreringsnummer og passord.')
+    if (!isValidPlate(plate)) return setError('Ugyldig registreringsnummer. Skriv det som på skiltet, for eksempel AB 12345.')
+    if (pass.length < 8) return setError('Passordet må ha minst 8 tegn.')
+    setBusy(true); setError('')
+    try {
+      const { data, error } = await signUp(mail.trim(), pass, name.trim(), phone.trim(), plate)
+      if (error) return setError(friendlyError(error.message))
+      if (data.session && data.user) await onDone(data.user.id, data.user.email || '')
+      else onNeedsConfirm('Kontoen er opprettet. Vi har sendt deg en e-post – trykk på lenken for å bekrefte adressen, og logg så inn.')
+    } catch {
+      setError('Kunne ikke koble til. Prøv igjen.')
+    } finally {
+      setBusy(false)
+    }
+  }
 
-  // Bøter
-  boterTopbar:{ background:NAVY,padding:'14px 20px 16px' },
-  filterRow:  { display:'flex',gap:8,padding:'14px 16px 10px',overflowX:'auto' },
-  chip:       { flexShrink:0,padding:'7px 14px',borderRadius:20,fontSize:13,fontWeight:600,cursor:'pointer',border:'1.5px solid #D1D5DB',background:'#fff',color:'#6B7280',fontFamily:'inherit' },
-  chipActive: { background:BLUE,borderColor:BLUE,color:'#fff' },
-  fineCard:   { background:'#fff',borderRadius:18,margin:'0 16px 12px',border:'1px solid #E5E7EB',overflow:'hidden',boxShadow:'0 2px 8px rgba(0,0,0,.06)' },
-  btnPay:     { flex:1,background:`linear-gradient(135deg,${BLUE} 0%,${BLUE3} 100%)`,color:'#fff',border:'none',borderRadius:12,fontSize:14,fontWeight:700,padding:11,cursor:'pointer',fontFamily:'inherit' },
-  btnDetail:  { padding:'11px 16px',border:'1.5px solid #D1D5DB',borderRadius:12,fontSize:14,fontWeight:600,color:'#6B7280',background:'none',cursor:'pointer',fontFamily:'inherit' },
+  return (
+    <AuthShell title="Opprett konto" lead="Kom i gang på under ett minutt"
+      footer={<>Har du konto? <button type="button" className="link-on-navy" onClick={onBack}>Logg inn</button></>}>
+      <form onSubmit={submit} noValidate style={{ display: 'contents' }}>
+        <Field label="Fullt navn" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} required />
+        <Field label="E-post" type="email" autoComplete="email" value={mail} onChange={(e) => setMail(e.target.value)} required />
+        <Field label="Telefon" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} hint="Valgfritt" />
+        <Field label="Registreringsnummer" autoCapitalize="characters" autoComplete="off" value={plate} onChange={(e) => setPlate(e.target.value)} placeholder="AB 12345" required />
+        <Field label="Passord" type="password" autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} hint="Minst 8 tegn" required />
+        <ErrorText message={error} />
+        <button className="btn btn-primary btn-block" type="submit" disabled={busy}>{busy ? 'Oppretter …' : 'Opprett konto'}</button>
+        <p className="fine-print">Ved registrering godtar du <a href="/personvern">personvernerklæringen</a>.</p>
+      </form>
+    </AuthShell>
+  )
+}
 
-  // Profil
-  profileHeader:{ background:`linear-gradient(180deg,${NAVY} 0%,${NAVY2} 100%)`,padding:'24px 16px 32px',display:'flex',flexDirection:'column',alignItems:'center',textAlign:'center' },
-  avatarLg:   { width:76,height:76,borderRadius:'50%',background:`linear-gradient(135deg,${BLUE} 0%,${BLUE3} 100%)`,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontWeight:800,fontSize:28,border:'3px solid rgba(255,255,255,.2)',boxShadow:'0 8px 20px rgba(0,0,0,.3)' },
-  statCard:   { flex:1,background:'#fff',borderRadius:14,padding:14,textAlign:'center',boxShadow:'0 4px 16px rgba(0,0,0,.1)',border:'1px solid #E5E7EB' },
-  statVal:    { fontSize:22,fontWeight:800,color:'#374151' },
-  statLbl:    { fontSize:11,color:'#6B7280',fontWeight:500,marginTop:2 },
-  settingsSection:{ margin:'20px 16px 0',background:'#fff',borderRadius:16,border:'1px solid #E5E7EB',overflow:'hidden' },
-  sectionTitle:{ fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',color:'#6B7280',padding:'12px 16px 4px' },
-  settingsRow:{ display:'flex',alignItems:'center',padding:'14px 16px',cursor:'pointer' },
-  btnLogout:  { width:'calc(100% - 32px)',margin:'16px 16px 4px',background:'#FEF2F2',border:'1.5px solid #FECACA',color:'#EF4444',borderRadius:14,fontSize:15,fontWeight:700,padding:15,cursor:'pointer',fontFamily:'inherit' },
+function ForgotScreen({ onBack }: { onBack: () => void }) {
+  const [mail, setMail] = useState('')
+  const [error, setError] = useState('')
+  const [sent, setSent] = useState(false)
+  const [busy, setBusy] = useState(false)
 
-  // Tabbar
-  tabbar:     { display:'flex',background:'#fff',borderTop:'1px solid #E5E7EB',flexShrink:0 },
-  tabItem:    { flex:1,display:'flex',flexDirection:'column',alignItems:'center',padding:'10px 4px 8px',cursor:'pointer',border:'none',background:'none',fontFamily:'inherit',gap:3 },
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!mail.trim()) return setError('Skriv inn e-postadressen din.')
+    setBusy(true); setError('')
+    const { error } = await sendPasswordReset(mail.trim())
+    setBusy(false)
+    if (error) return setError(friendlyError(error.message))
+    setSent(true)
+  }
 
-  // Toast
-  toast:      { position:'fixed',bottom:100,left:'50%',transform:'translateX(-50%)',background:'#1F2937',color:'#fff',padding:'10px 20px',borderRadius:30,fontSize:13,fontWeight:600,transition:'opacity .3s',pointerEvents:'none',whiteSpace:'nowrap',zIndex:999 },
+  return (
+    <AuthShell title="Glemt passord" lead="Vi sender deg en lenke for å lage nytt passord"
+      footer={<button type="button" className="link-on-navy" onClick={onBack}>Tilbake til innlogging</button>}>
+      {sent ? (
+        <Notice message={`Hvis det finnes en konto for ${mail.trim()}, har vi sendt en e-post med lenke. Sjekk også søppelpost.`} />
+      ) : (
+        <form onSubmit={submit} noValidate style={{ display: 'contents' }}>
+          <Field label="E-post" type="email" autoComplete="email" value={mail} onChange={(e) => setMail(e.target.value)} required />
+          <ErrorText message={error} />
+          <button className="btn btn-primary btn-block" type="submit" disabled={busy}>{busy ? 'Sender …' : 'Send lenke'}</button>
+        </form>
+      )}
+    </AuthShell>
+  )
+}
+
+/* ════════════════════ Hjem ════════════════════ */
+function HomeTab({ name, fines, onShowFines }: { name: string; fines: Fine[]; onShowFines: () => void }) {
+  const unpaid = fines.filter((f) => f.status === 'ubetalt')
+  const total = unpaid.reduce((s, f) => s + f.amount, 0)
+  const countText = unpaid.length === 1 ? '1 ubetalt bot' : `${unpaid.length} ubetalte bøter`
+  return (
+    <>
+      <header className="hero">
+        <p className="muted">God dag,</p>
+        <h1>{name}</h1>
+        <section className="summary" aria-label="Utestående bøter">
+          <div>
+            <p style={{ fontSize: '0.875rem' }}>Utestående bøter</p>
+            <p className="amount">{kr(total)}</p>
+            <p style={{ fontSize: '0.875rem' }}>{countText}</p>
+          </div>
+          <button type="button" className="btn-on-blue" onClick={onShowFines}>Se bøtene</button>
+        </section>
+      </header>
+      <section className="section" aria-labelledby="mine-boter">
+        <h2 id="mine-boter" className="section-title">Mine bøter</h2>
+        <FineList fines={fines} />
+      </section>
+    </>
+  )
+}
+
+/* ════════════════════ Bøter ════════════════════ */
+function FinesTab({ fines }: { fines: Fine[] }) {
+  const [filter, setFilter] = useState<FineStatus | 'alle'>('alle')
+  const shown = filter === 'alle' ? fines : fines.filter((f) => f.status === filter)
+  const count = (s: FineStatus) => fines.filter((f) => f.status === s).length
+  const chips: [FineStatus | 'alle', string][] = [
+    ['alle', `Alle (${fines.length})`], ['ubetalt', `Ubetalt (${count('ubetalt')})`],
+    ['pending', `Under behandling (${count('pending')})`], ['betalt', `Betalt (${count('betalt')})`],
+  ]
+  return (
+    <>
+      <header className="hero">
+        <h1>Mine bøter</h1>
+        <div className="chips" role="group" aria-label="Filtrer bøter">
+          {chips.map(([key, label]) => (
+            <button key={key} type="button" className="chip" aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}</button>
+          ))}
+        </div>
+      </header>
+      <section className="section" aria-live="polite">
+        <FineList fines={shown} detailed emptyText={fines.length ? 'Ingen bøter med dette filteret.' : undefined} />
+      </section>
+    </>
+  )
+}
+
+function FineList({ fines, detailed = false, emptyText }: { fines: Fine[]; detailed?: boolean; emptyText?: string }) {
+  if (fines.length === 0) {
+    return (
+      <div className="card empty">
+        <p>{emptyText || 'Du har ingen registrerte bøter.'}</p>
+        {!emptyText && <p style={{ fontSize: '0.875rem', marginTop: '0.25rem' }}>Bøter på skiltene dine dukker opp her automatisk.</p>}
+      </div>
+    )
+  }
+  return (
+    <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+      {fines.map((f) => <li key={f.id}><FineCard fine={f} detailed={detailed} /></li>)}
+    </ul>
+  )
+}
+
+function FineCard({ fine, detailed }: { fine: Fine; detailed: boolean }) {
+  const s = fine.status
+  const overdue = s === 'ubetalt' && fine.deadline && fine.deadline < todayIso()
+  return (
+    <article className="card fine" aria-label={`${STATUS_LABEL[s]}, ${fine.amount} kroner, ${fine.location || 'ukjent sted'}`}>
+      <div className={`fine-icon s-${s} s-${s}-bg`}><Icon name={STATUS_ICON[s]} size={22} /></div>
+      <div className="fine-main">
+        <p className="fine-plate">{formatPlate(fine.plate)}</p>
+        <p className="fine-meta">{[fine.location, fine.area].filter(Boolean).join(', ') || 'Ukjent sted'}</p>
+        {fine.issue_date && <p className="fine-meta">{fmtDate(fine.issue_date)}</p>}
+      </div>
+      <div className="fine-side">
+        <p className={`fine-amount s-${s}`}>{kr(fine.amount)}</p>
+        <span className={`badge s-${s} s-${s}-bg`}>{STATUS_LABEL[s]}</span>
+      </div>
+      {detailed && (
+        <div className="fine-extra">
+          <span>Frist: <strong className={overdue ? 's-ubetalt' : undefined}>
+            {s === 'betalt' ? 'Betalt' : s === 'pending' ? 'Under behandling' : fine.deadline ? `${fmtDate(fine.deadline)}${overdue ? ' (passert)' : ''}` : 'Ikke satt'}
+          </strong></span>
+          {fine.reference && <span>Referanse: <strong>{fine.reference}</strong></span>}
+          {s !== 'betalt' && <span>Betaling i appen kommer snart.</span>}
+        </div>
+      )}
+    </article>
+  )
+}
+
+/* ════════════════════ Profil ════════════════════ */
+function ProfileTab({ userId, email, profile, vehicles, fines, onProfileChange, onVehiclesChange, onLoggedOut }: {
+  userId: string; email: string; profile: Profile | null; vehicles: Vehicle[]; fines: Fine[]
+  onProfileChange: (p: Profile) => void; onVehiclesChange: () => Promise<void>; onLoggedOut: (msg?: string) => void
+}) {
+  const name = profile?.full_name || email.split('@')[0]
+  const totalPaid = fines.filter((f) => f.status === 'betalt').reduce((s, f) => s + f.amount, 0)
+  return (
+    <>
+      <header className="hero" style={{ textAlign: 'center' }}>
+        <div className="avatar" aria-hidden="true">{name.charAt(0).toUpperCase()}</div>
+        <h1>{name}</h1>
+        <p className="muted">{email}</p>
+        {profile && profile.role !== 'privat' && (
+          <p className="muted" style={{ marginTop: '0.25rem' }}>Konto: {profile.role === 'admin' ? 'Administrator' : 'Bedrift'}</p>
+        )}
+      </header>
+
+      <div className="section">
+        <div className="stats">
+          <div className="card stat"><p className="value">{fines.length}</p><p className="label">Bøter totalt</p></div>
+          <div className="card stat"><p className="value">{kr(totalPaid)}</p><p className="label">Betalt totalt</p></div>
+        </div>
+      </div>
+
+      <VehicleSection userId={userId} vehicles={vehicles} onChange={onVehiclesChange} />
+      <ContactSection userId={userId} email={email} profile={profile} onSaved={onProfileChange} />
+      <SettingsSection userId={userId} profile={profile} onSaved={onProfileChange} />
+      {profile?.role === 'admin' && (
+        <div className="section">
+          <a className="btn btn-secondary btn-block" href="/admin"><Icon name="shield" /> Åpne admin</a>
+        </div>
+      )}
+      <SecuritySection onLoggedOut={onLoggedOut} />
+      <div className="section"><a href="/personvern" className="btn btn-quiet">Personvernerklæring</a></div>
+    </>
+  )
+}
+
+function VehicleSection({ userId, vehicles, onChange }: { userId: string; vehicles: Vehicle[]; onChange: () => Promise<void> }) {
+  const [newPlate, setNewPlate] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [info, setInfo] = useState<VehicleInfo | null>(null)
+  const [infoState, setInfoState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+  const [infoError, setInfoError] = useState('')
+  const firstPlate = vehicles[0]?.plate || ''
+
+  useEffect(() => {
+    if (!firstPlate) { setInfo(null); setInfoState('idle'); return }
+    let cancelled = false
+    setInfoState('loading')
+    lookupVehicleInfo(firstPlate).then((res) => {
+      if (cancelled) return
+      if (res.vehicle) { setInfo(res.vehicle); setInfoState('done') }
+      else { setInfo(null); setInfoError(res.error || 'Kunne ikke hente kjøretøyinfo.'); setInfoState('error') }
+    })
+    return () => { cancelled = true }
+  }, [firstPlate])
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault()
+    if (!isValidPlate(newPlate)) return setError('Ugyldig registreringsnummer.')
+    setBusy(true); setError('')
+    const { error } = await addVehicle(userId, newPlate)
+    setBusy(false)
+    if (error) return setError(friendlyError(error.message))
+    setNewPlate('')
+    await onChange()
+  }
+
+  async function remove(v: Vehicle) {
+    if (!window.confirm(`Fjerne ${formatPlate(v.plate)} fra kontoen? Bøter på dette skiltet vises da ikke lenger.`)) return
+    const { error } = await removeVehicle(v.id)
+    if (error) return setError(friendlyError(error.message))
+    await onChange()
+  }
+
+  const overdue = info?.nextInspection && info.nextInspection < todayIso()
+  const infoRows: [string, string, string, string?][] = info ? ([
+    ['tag', 'Merke og modell', [info.make, info.model].filter(Boolean).join(' ')],
+    ['info', 'Type', info.vehicleType || ''],
+    ['palette', 'Farge', info.color || ''],
+    ['fuel', 'Drivstoff', info.fuel || ''],
+    ['calendar', 'Først registrert', fmtDate(info.firstRegistered)],
+    [overdue ? 'warning' : 'check', overdue ? 'EU-kontroll (fristen er passert)' : 'Neste EU-kontroll', fmtDate(info.nextInspection), overdue ? 's-ubetalt' : undefined],
+    ['doc', 'Status', info.registrationStatus || ''],
+  ] as [string, string, string, string?][]).filter(([, , v]) => v) : []
+
+  return (
+    <section className="section" aria-labelledby="kjoretoy">
+      <h2 id="kjoretoy" className="section-title">Kjøretøy</h2>
+      <div className="card list">
+        {vehicles.length === 0 && <p className="list-row" style={{ color: 'var(--sub)' }}>Ingen kjøretøy lagt til ennå.</p>}
+        {vehicles.map((v) => (
+          <div key={v.id} className="list-row">
+            <span className="row-icon"><Icon name="car" size={18} /></span>
+            <span className="grow" style={{ fontWeight: 600 }}>{formatPlate(v.plate)}</span>
+            <button type="button" className="btn btn-quiet btn-small" onClick={() => remove(v)} aria-label={`Fjern ${formatPlate(v.plate)}`}>
+              <Icon name="trash" size={18} /> Fjern
+            </button>
+          </div>
+        ))}
+        {infoState === 'loading' && <p className="list-row" role="status" style={{ color: 'var(--sub)' }}>Henter info fra Statens vegvesen …</p>}
+        {infoState === 'error' && <div className="list-row"><ErrorText message={infoError} /></div>}
+        {infoRows.map(([icon, label, value, cls]) => (
+          <div key={label} className="list-row">
+            <span className={`row-icon ${cls || ''}`}><Icon name={icon} size={18} /></span>
+            <span className={`grow ${cls || ''}`}>{label}</span>
+            <span className={`value ${cls || ''}`}>{value}</span>
+          </div>
+        ))}
+        <form onSubmit={add} className="list-row" noValidate>
+          <div className="grow"><Field label="Legg til kjøretøy" autoCapitalize="characters" autoComplete="off" value={newPlate} onChange={(e) => setNewPlate(e.target.value)} placeholder="AB 12345" /></div>
+          <button className="btn btn-secondary btn-small" type="submit" disabled={busy} style={{ alignSelf: 'flex-end' }}><Icon name="plus" size={18} /> Legg til</button>
+          {error && <div style={{ flexBasis: '100%' }}><ErrorText message={error} /></div>}
+        </form>
+      </div>
+      {info && <p className="source">Kilde: Statens vegvesen ({formatPlate(firstPlate)})</p>}
+    </section>
+  )
+}
+
+function ContactSection({ userId, email, profile, onSaved }: { userId: string; email: string; profile: Profile | null; onSaved: (p: Profile) => void }) {
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState(profile?.full_name || '')
+  const [phone, setPhone] = useState(profile?.phone || '')
+  const [error, setError] = useState('')
+  const [saved, setSaved] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return setError('Navn kan ikke være tomt.')
+    setBusy(true); setError('')
+    const { error } = await updateProfile(userId, { full_name: name.trim(), phone: phone.trim() || null })
+    setBusy(false)
+    if (error) return setError(friendlyError(error.message))
+    if (profile) onSaved({ ...profile, full_name: name.trim(), phone: phone.trim() || null })
+    setEditing(false); setSaved('Kontaktinfo lagret.')
+  }
+
+  return (
+    <section className="section" aria-labelledby="kontakt">
+      <h2 id="kontakt" className="section-title">Kontaktinfo</h2>
+      <div className="card">
+        {!editing ? (
+          <div className="list">
+            <div className="list-row"><span className="row-icon"><Icon name="user" size={18} /></span><span className="grow">Navn</span><span className="value">{profile?.full_name || '–'}</span></div>
+            <div className="list-row"><span className="row-icon"><Icon name="mail" size={18} /></span><span className="grow">E-post</span><span className="value">{email}</span></div>
+            <div className="list-row"><span className="row-icon"><Icon name="phone" size={18} /></span><span className="grow">Telefon</span><span className="value">{profile?.phone || 'Ikke oppgitt'}</span></div>
+            <div className="list-row">
+              <Notice message={saved} />
+              <button type="button" className="btn btn-secondary btn-small" onClick={() => { setSaved(''); setName(profile?.full_name || ''); setPhone(profile?.phone || ''); setEditing(true) }}>Endre</button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={save} className="card-pad" noValidate style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+            <Field label="Navn" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
+            <Field label="Telefon" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} hint="Valgfritt" />
+            <p className="hint" style={{ fontSize: '0.875rem', color: 'var(--sub)' }}>E-postadressen ({email}) kan ikke endres her.</p>
+            <ErrorText message={error} />
+            <div className="row">
+              <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? 'Lagrer …' : 'Lagre'}</button>
+              <button className="btn btn-secondary" type="button" onClick={() => setEditing(false)}>Avbryt</button>
+            </div>
+          </form>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function SettingsSection({ userId, profile, onSaved }: { userId: string; profile: Profile | null; onSaved: (p: Profile) => void }) {
+  const [error, setError] = useState('')
+  const notify = profile?.notify_email ?? true
+
+  async function toggleNotify(value: boolean) {
+    setError('')
+    const { error } = await updateProfile(userId, { notify_email: value })
+    if (error) return setError(friendlyError(error.message))
+    if (profile) onSaved({ ...profile, notify_email: value })
+  }
+
+  return (
+    <section className="section" aria-labelledby="innstillinger">
+      <h2 id="innstillinger" className="section-title">Innstillinger</h2>
+      <div className="card list">
+        <div className="list-row" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+          <span style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}><span className="row-icon"><Icon name="half" size={18} /></span>Utseende</span>
+          <ThemePicker />
+        </div>
+        <div className="list-row">
+          <span className="row-icon"><Icon name="bell" size={18} /></span>
+          <label htmlFor="varsler" className="grow">
+            E-postvarsel ved nye bøter
+            <span style={{ display: 'block', fontSize: '0.875rem', color: 'var(--sub)' }}>Vi sender en e-post når en bot registreres på skiltet ditt.</span>
+          </label>
+          <span className="switch">
+            <input id="varsler" type="checkbox" role="switch" checked={notify} onChange={(e) => toggleNotify(e.target.checked)} />
+            <span className="track" aria-hidden="true" />
+          </span>
+        </div>
+        {error && <div className="list-row"><ErrorText message={error} /></div>}
+      </div>
+    </section>
+  )
+}
+
+function SecuritySection({ onLoggedOut }: { onLoggedOut: (msg?: string) => void }) {
+  const [changing, setChanging] = useState(false)
+  const [pass, setPass] = useState('')
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [busy, setBusy] = useState(false)
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  const [confirmText, setConfirmText] = useState('')
+  const [deleteError, setDeleteError] = useState('')
+
+  async function savePassword(e: React.FormEvent) {
+    e.preventDefault()
+    if (pass.length < 8) return setError('Passordet må ha minst 8 tegn.')
+    setBusy(true); setError('')
+    const { error } = await updatePassword(pass)
+    setBusy(false)
+    if (error) return setError(friendlyError(error.message))
+    setPass(''); setChanging(false); setNotice('Passordet er endret.')
+  }
+
+  async function logout(everywhere: boolean) {
+    try { await signOut(everywhere) } catch {}
+    onLoggedOut(everywhere ? 'Du er logget ut fra alle enheter.' : '')
+  }
+
+  async function confirmDelete() {
+    if (confirmText.trim().toUpperCase() !== 'SLETT') return setDeleteError('Skriv SLETT for å bekrefte.')
+    setBusy(true); setDeleteError('')
+    const { error } = await deleteOwnAccount()
+    setBusy(false)
+    if (error) return setDeleteError(friendlyError(error.message, 'Kunne ikke slette kontoen. Prøv igjen.'))
+    dialogRef.current?.close()
+    onLoggedOut('Kontoen din er slettet.')
+  }
+
+  return (
+    <section className="section" aria-labelledby="sikkerhet">
+      <h2 id="sikkerhet" className="section-title">Konto og sikkerhet</h2>
+      <Notice message={notice} />
+      <div className="card list">
+        {!changing ? (
+          <button type="button" className="list-row btn-quiet" style={{ width: '100%', textAlign: 'left' }} onClick={() => { setNotice(''); setChanging(true) }}>
+            <span className="row-icon"><Icon name="lock" size={18} /></span><span className="grow">Endre passord</span><Icon name="arrow" size={18} />
+          </button>
+        ) : (
+          <form onSubmit={savePassword} className="card-pad" noValidate style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+            <Field label="Nytt passord" type="password" autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} hint="Minst 8 tegn" />
+            <ErrorText message={error} />
+            <div className="row">
+              <button className="btn btn-primary" type="submit" disabled={busy}>Lagre passord</button>
+              <button className="btn btn-secondary" type="button" onClick={() => setChanging(false)}>Avbryt</button>
+            </div>
+          </form>
+        )}
+        <button type="button" className="list-row btn-quiet" style={{ width: '100%', textAlign: 'left' }} onClick={() => logout(false)}>
+          <span className="row-icon"><Icon name="logout" size={18} /></span><span className="grow">Logg ut</span>
+        </button>
+        <button type="button" className="list-row btn-quiet" style={{ width: '100%', textAlign: 'left' }} onClick={() => logout(true)}>
+          <span className="row-icon"><Icon name="logout" size={18} /></span>
+          <span className="grow">Logg ut fra alle enheter<span style={{ display: 'block', fontSize: '0.875rem', color: 'var(--sub)' }}>Også på telefonen og andre nettlesere</span></span>
+        </button>
+      </div>
+      <button type="button" className="btn btn-danger btn-block" onClick={() => { setConfirmText(''); setDeleteError(''); dialogRef.current?.showModal() }}>
+        <Icon name="trash" size={18} /> Slett kontoen min
+      </button>
+
+      <dialog ref={dialogRef} aria-labelledby="slett-tittel" aria-describedby="slett-tekst">
+        <h2 id="slett-tittel">Slette kontoen?</h2>
+        <p id="slett-tekst" style={{ marginBottom: '1rem' }}>
+          Profilen, kjøretøyene og innloggingen din slettes for godt. Dette kan ikke angres.
+        </p>
+        <Field label="Skriv SLETT for å bekrefte" autoComplete="off" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} />
+        <div style={{ marginTop: '0.75rem' }}><ErrorText message={deleteError} /></div>
+        <div className="row" style={{ marginTop: '1rem' }}>
+          <button type="button" className="btn btn-danger" onClick={confirmDelete} disabled={busy}>{busy ? 'Sletter …' : 'Slett for godt'}</button>
+          <button type="button" className="btn btn-secondary" onClick={() => dialogRef.current?.close()}>Avbryt</button>
+        </div>
+      </dialog>
+    </section>
+  )
 }
