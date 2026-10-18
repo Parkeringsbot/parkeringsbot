@@ -87,6 +87,7 @@ struct ParkingFine: Identifiable, Equatable {
     let date: String
     let deadline: String?
     let reference: String?
+    let isOverdue: Bool
     var status: FineStatus
 
     init(_ f: DBFine) {
@@ -98,6 +99,8 @@ struct ParkingFine: Identifiable, Equatable {
         deadline = formatISODate(f.deadline)
         reference = f.reference
         status = FineStatus(db: f.status)
+        let today = ISO8601DateFormatter.string(from: Date(), timeZone: TimeZone(identifier: "Europe/Oslo")!, formatOptions: [.withFullDate])
+        isOverdue = status == .unpaid && (f.deadline.map { $0 < today } ?? false)
     }
 
     var accessibilityText: String {
@@ -489,7 +492,7 @@ struct LoginView: View {
 
             VStack(spacing: 14) {
                 if !state.flash.isEmpty { NoticeText(message: state.flash) }
-                PBTextField(label: "E-post", placeholder: "din@epost.no", text: $email,
+                PBTextField(label: "E-post", placeholder: "ola.nordmann@epost.no", text: $email,
                             keyboard: .emailAddress, contentType: .username, capitalization: .never)
                 PBTextField(label: "Passord", placeholder: "", text: $password,
                             contentType: .password, secure: true)
@@ -547,11 +550,11 @@ struct RegisterView: View {
             .padding(.bottom, 24)
 
             VStack(spacing: 14) {
-                PBTextField(label: "Fullt navn", placeholder: "Fornavn og etternavn", text: $fullName,
+                PBTextField(label: "Fullt navn", placeholder: "Ola Nordmann", text: $fullName,
                             contentType: .name, capitalization: .words)
-                PBTextField(label: "E-post", placeholder: "din@epost.no", text: $email,
+                PBTextField(label: "E-post", placeholder: "ola.nordmann@epost.no", text: $email,
                             keyboard: .emailAddress, contentType: .username, capitalization: .never)
-                PBTextField(label: "Telefon (valgfritt)", placeholder: "+47 000 00 000", text: $phone,
+                PBTextField(label: "Telefon (valgfritt)", placeholder: "+47 123 45 678", text: $phone,
                             keyboard: .phonePad, contentType: .telephoneNumber)
                 PBTextField(label: "Registreringsnummer", placeholder: "AB 12345", text: $licensePlate,
                             keyboard: .asciiCapable, capitalization: .characters)
@@ -616,7 +619,7 @@ struct ForgotPasswordView: View {
                 if sent {
                     NoticeText(message: "Hvis det finnes en konto for \(email), har vi sendt en e-post med lenke. Sjekk også søppelpost.")
                 } else {
-                    PBTextField(label: "E-post", placeholder: "din@epost.no", text: $email,
+                    PBTextField(label: "E-post", placeholder: "ola.nordmann@epost.no", text: $email,
                                 keyboard: .emailAddress, contentType: .username, capitalization: .never)
                     if !errorMessage.isEmpty { ErrorText(message: errorMessage) }
                     PBPrimaryButton(title: busy ? "Sender …" : "Send lenke", action: send).disabled(busy)
@@ -835,11 +838,12 @@ struct FinesTab: View {
                         VStack(spacing: 12) {
                             Image(systemName: "p.circle").font(.system(size: 48)).foregroundColor(.pbBorder)
                                 .accessibilityHidden(true)
-                            Text("Ingen bøter her").font(.pb(.subheadline, .medium)).foregroundColor(.pbSub)
+                            Text(state.fines.isEmpty ? "Du har ingen registrerte bøter." : "Ingen bøter med dette filteret.")
+                                .font(.pb(.subheadline, .medium)).foregroundColor(.pbSub)
                         }
                         .frame(maxWidth: .infinity).padding(.top, 80)
                     } else {
-                        ForEach(filtered) { fine in FineCard(fine: fine) }
+                        ForEach(filtered) { fine in FineCard(fine: fine, detailed: true) }
                     }
                     Spacer().frame(height: 8)
                 }
@@ -1244,8 +1248,8 @@ struct EditContactSheet: View {
 
     var body: some View {
         SheetScaffold(title: "Kontaktinfo") {
-            PBTextField(label: "Navn", placeholder: "Fornavn og etternavn", text: $name, contentType: .name, capitalization: .words)
-            PBTextField(label: "Telefon (valgfritt)", placeholder: "+47 000 00 000", text: $phone, keyboard: .phonePad, contentType: .telephoneNumber)
+            PBTextField(label: "Navn", placeholder: "Ola Nordmann", text: $name, contentType: .name, capitalization: .words)
+            PBTextField(label: "Telefon (valgfritt)", placeholder: "+47 123 45 678", text: $phone, keyboard: .phonePad, contentType: .telephoneNumber)
             Text("E-postadressen (\(state.email)) kan ikke endres her.").font(.pb(.footnote)).foregroundColor(.pbSub)
             if !error.isEmpty { ErrorText(message: error) }
             PBPrimaryButton(title: busy ? "Lagrer …" : "Lagre", action: save).disabled(busy)
@@ -1471,6 +1475,7 @@ struct ProfileRow: View {
 // MARK: - Shared: FineCard
 struct FineCard: View {
     let fine: ParkingFine
+    var detailed = false
     @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric private var iconBox: CGFloat = 44
 
@@ -1499,11 +1504,46 @@ struct FineCard: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if detailed { details }
+        }
         .background(Color.pbCard).cornerRadius(14)
         .shadow(color: Color.black.opacity(0.06), radius: 4, y: 1)
         .padding(.horizontal, 16)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(fine.accessibilityText)
+        .accessibilityLabel(fine.accessibilityText + (detailed && fine.reference != nil ? " Referanse \(fine.reference!)." : ""))
+    }
+}
+
+private extension FineCard {
+    var deadlineText: String {
+        switch fine.status {
+        case .paid:    return "Betalt"
+        case .pending: return "Under behandling"
+        case .unpaid:  return (fine.deadline ?? "Ikke satt") + (fine.isOverdue ? " (passert)" : "")
+        }
+    }
+
+    var details: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Divider().padding(.bottom, 6)
+            HStack(spacing: 4) {
+                Text("Frist:").foregroundColor(.pbSub)
+                Text(deadlineText).fontWeight(.semibold).foregroundColor(fine.isOverdue ? .pbRed : .pbText)
+            }
+            if let ref = fine.reference {
+                HStack(spacing: 4) {
+                    Text("Referanse:").foregroundColor(.pbSub)
+                    Text(ref).fontWeight(.semibold).foregroundColor(.pbText)
+                }
+            }
+            if fine.status != .paid {
+                Text("Betaling i appen kommer snart.").foregroundColor(.pbSub)
+            }
+        }
+        .font(.pb(.footnote))
+        .padding(.horizontal, 14).padding(.bottom, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
