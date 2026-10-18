@@ -79,21 +79,45 @@ private func announce(_ message: String) {
 }
 
 // MARK: - Models
-struct ParkingFine: Identifiable {
-    let id = UUID()
+struct ParkingFine: Identifiable, Equatable {
+    let id: String
     let licensePlate: String
     let location: String
     let amount: Int
     let date: String
+    let deadline: String?
+    let reference: String?
     var status: FineStatus
 
+    init(_ f: DBFine) {
+        id = f.id
+        licensePlate = Plate.format(f.plate)
+        location = [f.location, f.area].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+        amount = f.amount
+        date = formatISODate(f.issueDate) ?? ""
+        deadline = formatISODate(f.deadline)
+        reference = f.reference
+        status = FineStatus(db: f.status)
+    }
+
     var accessibilityText: String {
-        "\(status.label), \(amount) kroner. \(location), \(date). Registreringsnummer \(licensePlate)."
+        var parts = ["\(status.label), \(amount) kroner.", location.isEmpty ? "Ukjent sted." : "\(location).", date.isEmpty ? "" : "\(date)."]
+        if let deadline, status == .unpaid { parts.append("Frist \(deadline).") }
+        parts.append("Registreringsnummer \(licensePlate).")
+        return parts.filter { !$0.isEmpty }.joined(separator: " ")
     }
 }
 
 enum FineStatus: CaseIterable {
     case unpaid, paid, pending
+
+    init(db: String) {
+        switch db {
+        case "betalt":  self = .paid
+        case "pending": self = .pending
+        default:        self = .unpaid
+        }
+    }
     var label: String {
         switch self {
         case .unpaid:  return "Ubetalt"
@@ -124,46 +148,213 @@ enum FineStatus: CaseIterable {
     }
 }
 
+/// "1650" → "1 650 kr"
+func kr(_ amount: Int) -> String {
+    let f = NumberFormatter()
+    f.locale = Locale(identifier: "nb_NO")
+    f.numberStyle = .decimal
+    return "\(f.string(from: NSNumber(value: amount)) ?? "\(amount)") kr"
+}
+
+/// "2026-09-15" → "15. september 2026"
+func formatISODate(_ iso: String?) -> String? {
+    guard let iso, !iso.isEmpty else { return nil }
+    let parser = DateFormatter()
+    parser.locale = Locale(identifier: "en_US_POSIX")
+    parser.dateFormat = "yyyy-MM-dd"
+    guard let date = parser.date(from: String(iso.prefix(10))) else { return iso }
+    return longDateFormatter.string(from: date)
+}
+
+let longDateFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "nb_NO")
+    formatter.dateStyle = .long
+    return formatter
+}()
+
 // MARK: - App State
-class AppState: ObservableObject {
-    @Published var isLoggedIn = false
-    @Published var isNewUser  = false
-    @Published var userName   = ""
-    @Published var userEmail  = "khadar@epost.no"
-    @Published var userPhone  = "+47 900 00 000"
-    @Published var licensePlate = "AB 12345"
-    @Published var fines: [ParkingFine] = [
-        ParkingFine(licensePlate: "AB 12345", location: "Karl Johans gt.", amount: 900,  date: "15. sep 2026", status: .unpaid),
-        ParkingFine(licensePlate: "AB 12345", location: "Grünerløkka",    amount: 750,  date: "10. sep 2026", status: .unpaid),
-        ParkingFine(licensePlate: "AB 12345", location: "Vippetangen",    amount: 750,  date: "5. sep 2026",  status: .pending),
-        ParkingFine(licensePlate: "AB 12345", location: "Majorstuen",     amount: 600,  date: "12. aug 2026", status: .paid)
-    ]
+@MainActor
+final class AppState: ObservableObject {
+    enum Screen: Equatable { case loading, login, register, forgot, dashboard }
+
+    @Published var screen: Screen = .loading
+    @Published var email = ""
+    @Published var profile: DBProfile?
+    @Published var vehicles: [DBVehicle] = []
+    @Published var fines: [ParkingFine] = []
+    @Published var flash = ""
+    @Published var dataError: String?
 
     enum VehicleLoadState: Equatable {
         case idle, loading, loaded(VehicleInfo), failed(String)
     }
     @Published var vehicleState: VehicleLoadState = .idle
+
+    private let api = SupabaseService.shared
     private let vegvesen = VegvesenAPI()
 
-    @MainActor
-    func loadVehicle() async {
-        vehicleState = .loading
-        do {
-            let vehicle = try await vegvesen.vehicle(licensePlate: licensePlate)
-            licensePlate = vehicle.licensePlate
-            vehicleState = .loaded(vehicle)
-        } catch {
-            let message = (error as? LocalizedError)?.errorDescription ?? "Noe gikk galt. Prøv igjen."
-            vehicleState = .failed(message)
-            announce(message)
+    var fullName: String { profile?.fullName.isEmpty == false ? profile!.fullName : String(email.split(separator: "@").first ?? "") }
+    var userName: String { fullName.components(separatedBy: " ").first ?? fullName }
+    var phone: String? { profile?.phone }
+    var licensePlate: String { vehicles.first.map { Plate.format($0.plate) } ?? "" }
+    var isAdmin: Bool { profile?.role == "admin" }
+    var roleLabel: String? {
+        switch profile?.role {
+        case "admin":   return "Administrator"
+        case "bedrift": return "Bedrift"
+        default:        return nil
         }
     }
 
-    func logout() {
-        isLoggedIn   = false
-        isNewUser    = false
-        userName     = ""
+    // MARK: Oppstart og lasting
+
+    func start() async {
+        guard let s = api.session else { screen = .login; return }
+        email = s.email
+        await loadAll()
+    }
+
+    func loadAll() async {
+        do {
+            async let p = api.fetchProfile()
+            async let v = api.fetchVehicles()
+            async let f = api.fetchFines()
+            let (loadedProfile, loadedVehicles, loadedFines) = try await (p, v, f)
+            profile = loadedProfile
+            vehicles = loadedVehicles
+            fines = loadedFines.map(ParkingFine.init)
+            dataError = nil
+            screen = .dashboard
+        } catch {
+            if api.session == nil {
+                resetLocalState(message: "Innloggingen er utløpt. Logg inn på nytt.")
+                return
+            }
+            dataError = message(error)
+            screen = .dashboard
+            announce(dataError ?? "")
+        }
+        await loadVehicle()
+    }
+
+    func loadVehicle() async {
+        guard !licensePlate.isEmpty else { vehicleState = .idle; return }
+        vehicleState = .loading
+        do {
+            vehicleState = .loaded(try await vegvesen.vehicle(licensePlate: licensePlate))
+        } catch {
+            let text = message(error)
+            vehicleState = .failed(text)
+            announce(text)
+        }
+    }
+
+    // MARK: Innlogging
+
+    func signIn(email: String, password: String) async -> String? {
+        do {
+            let s = try await api.signIn(email: email, password: password)
+            self.email = s.email
+            flash = ""
+            await loadAll()
+            return nil
+        } catch { return message(error) }
+    }
+
+    func signUp(email: String, password: String, fullName: String, phone: String, plate: String) async -> String? {
+        do {
+            if let s = try await api.signUp(email: email, password: password, fullName: fullName, phone: phone, plate: plate) {
+                self.email = s.email
+                await loadAll()
+            } else {
+                flash = "Kontoen er opprettet. Vi har sendt deg en e-post – trykk på lenken for å bekrefte adressen, og logg så inn."
+                screen = .login
+                announce(flash)
+            }
+            return nil
+        } catch { return message(error) }
+    }
+
+    func sendPasswordReset(email: String) async -> String? {
+        do { try await api.sendPasswordReset(email: email); return nil } catch { return message(error) }
+    }
+
+    func logout(everywhere: Bool) async {
+        await api.signOut(everywhere: everywhere)
+        resetLocalState(message: everywhere ? "Du er logget ut fra alle enheter." : "")
+    }
+
+    func deleteAccount() async -> String? {
+        do {
+            try await api.deleteOwnAccount()
+            resetLocalState(message: "Kontoen din er slettet.")
+            return nil
+        } catch { return message(error) }
+    }
+
+    private func resetLocalState(message: String) {
+        profile = nil; vehicles = []; fines = []; email = ""; dataError = nil
         vehicleState = .idle
+        flash = message
+        screen = .login
+        if !message.isEmpty { announce(message) }
+    }
+
+    // MARK: Profil
+
+    func updateContact(name: String, phone: String) async -> String? {
+        do {
+            try await api.updateProfile(["full_name": name, "phone": phone.isEmpty ? NSNull() : phone])
+            profile?.fullName = name
+            profile?.phone = phone.isEmpty ? nil : phone
+            return nil
+        } catch { return message(error) }
+    }
+
+    func setNotify(_ on: Bool) async -> String? {
+        let previous = profile?.notifyEmail
+        profile?.notifyEmail = on
+        do {
+            try await api.updateProfile(["notify_email": on])
+            announce(on ? "E-postvarsler er slått på" : "E-postvarsler er slått av")
+            return nil
+        } catch {
+            if let previous { profile?.notifyEmail = previous }
+            return message(error)
+        }
+    }
+
+    func changePassword(_ password: String) async -> String? {
+        do { try await api.updatePassword(password); return nil } catch { return message(error) }
+    }
+
+    func addVehicle(plate: String) async -> String? {
+        guard Plate.isValid(plate) else { return "Ugyldig registreringsnummer." }
+        do {
+            try await api.addVehicle(plate: plate)
+            await reloadVehiclesAndFines()
+            return nil
+        } catch { return message(error) }
+    }
+
+    func removeVehicle(_ vehicle: DBVehicle) async -> String? {
+        do {
+            try await api.removeVehicle(id: vehicle.id)
+            await reloadVehiclesAndFines()
+            return nil
+        } catch { return message(error) }
+    }
+
+    private func reloadVehiclesAndFines() async {
+        let oldPlate = licensePlate
+        if let v = try? await api.fetchVehicles() { vehicles = v }
+        if let f = try? await api.fetchFines() { fines = f.map(ParkingFine.init) }
+        if licensePlate != oldPlate { await loadVehicle() }
+    }
+
+    private func message(_ error: Error) -> String {
+        (error as? LocalizedError)?.errorDescription ?? "Noe gikk galt. Prøv igjen."
     }
 }
 
@@ -175,16 +366,20 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if state.isLoggedIn {
-                DashboardView(state: state)
-            } else if state.isNewUser {
-                RegisterView(state: state)
-            } else {
-                LoginView(state: state)
+            switch state.screen {
+            case .loading:
+                ZStack {
+                    Color.pbNavy.ignoresSafeArea()
+                    ProgressView("Laster …").tint(.white).foregroundColor(.white)
+                }
+            case .login:     LoginView(state: state)
+            case .register:  RegisterView(state: state)
+            case .forgot:    ForgotPasswordView(state: state)
+            case .dashboard: DashboardView(state: state)
             }
         }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: state.isLoggedIn)
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: state.isNewUser)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: state.screen)
+        .task { await state.start() }
         .onAppear { theme.apply() }
         .onChange(of: theme) { newTheme in newTheme.apply() }
     }
@@ -199,7 +394,7 @@ private struct AuthLogo: View {
                 .fill(LinearGradient(colors: [.pbBlue, .pbBlue2], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .frame(width: size, height: size)
                 .shadow(color: Color.pbBlue.opacity(0.5), radius: 16)
-            Text("🅿️").font(.system(size: size * 0.47))
+            Text("P").font(.system(size: size * 0.5, weight: .heavy)).foregroundColor(.white)
         }
         .accessibilityHidden(true)
     }
@@ -220,7 +415,7 @@ private struct AuthScreen<Content: View>: View {
     }
 }
 
-private struct ErrorText: View {
+struct ErrorText: View {
     let message: String
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -235,12 +430,51 @@ private struct ErrorText: View {
     }
 }
 
+struct NoticeText: View {
+    let message: String
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "checkmark.circle.fill").accessibilityHidden(true)
+            Text(message)
+        }
+        .font(.pb(.footnote, .medium))
+        .foregroundColor(.pbGreen)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.pbGreenBg).cornerRadius(10)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct AuthFooterLink: View {
+    let lead: String?
+    let action: String
+    let onTap: () -> Void
+    var body: some View {
+        Button(action: onTap) {
+            ViewThatFits {
+                HStack(spacing: 4) { leadText; actionText }
+                VStack(spacing: 2) { leadText; actionText }
+            }
+            .font(.pb(.footnote))
+            .frame(minHeight: 44)
+            .padding(.horizontal, 24)
+        }
+        .padding(.top, 12)
+        .accessibilityLabel(action)
+        .accessibilityHint(lead ?? "")
+    }
+    @ViewBuilder private var leadText: some View { if let lead { Text(lead).foregroundColor(.white.opacity(0.75)) } }
+    private var actionText: some View { Text(action).foregroundColor(.pbLink).fontWeight(.semibold).underline() }
+}
+
 // MARK: - Login
 struct LoginView: View {
     @ObservedObject var state: AppState
-    @State private var licensePlate = ""
-    @State private var bankIDCode   = ""
+    @State private var email = ""
+    @State private var password = ""
     @State private var errorMessage = ""
+    @State private var busy = false
 
     var body: some View {
         AuthScreen {
@@ -248,48 +482,47 @@ struct LoginView: View {
                 AuthLogo(size: 72)
                 Text("Parkeringsbot").font(.pb(.title, .bold)).foregroundColor(.white)
                     .accessibilityAddTraits(.isHeader)
-                Text("Håndter dine bøter enkelt og digitalt")
+                Text("Håndter parkeringsbøtene dine enkelt og digitalt")
                     .font(.pb(.footnote)).foregroundColor(.white.opacity(0.75)).multilineTextAlignment(.center)
             }
             .padding(.bottom, 32).padding(.horizontal, 24)
 
             VStack(spacing: 14) {
-                PBTextField(label: "Registreringsnummer", placeholder: "AB 12345", text: $licensePlate,
-                            keyboard: .asciiCapable, capitalization: .characters)
-                PBTextField(label: "BankID-kode", placeholder: "••••••", text: $bankIDCode,
-                            keyboard: .numberPad, secure: true)
+                if !state.flash.isEmpty { NoticeText(message: state.flash) }
+                PBTextField(label: "E-post", placeholder: "din@epost.no", text: $email,
+                            keyboard: .emailAddress, contentType: .username, capitalization: .never)
+                PBTextField(label: "Passord", placeholder: "", text: $password,
+                            contentType: .password, secure: true)
                 if !errorMessage.isEmpty { ErrorText(message: errorMessage) }
-                PBPrimaryButton(title: "Logg inn med BankID", action: login)
+                PBPrimaryButton(title: busy ? "Logger inn …" : "Logg inn", action: login)
+                    .disabled(busy)
+                Button("Glemt passord?") { state.flash = ""; state.screen = .forgot }
+                    .font(.pb(.subheadline, .semibold)).foregroundColor(.pbAccent)
+                    .frame(minHeight: 44)
             }
             .padding(20).background(Color.pbCard).cornerRadius(20).padding(.horizontal, 24)
 
-            Button(action: { state.isNewUser = true }) {
-                ViewThatFits {
-                    HStack(spacing: 4) { noAccountText; createAccountText }
-                    VStack(spacing: 2) { noAccountText; createAccountText }
-                }
-                .font(.pb(.footnote))
-                .frame(minHeight: 44)
-                .padding(.horizontal, 24)
+            AuthFooterLink(lead: "Har du ikke konto?", action: "Opprett konto gratis") {
+                state.flash = ""; state.screen = .register
             }
-            .padding(.top, 12)
-            .accessibilityLabel("Opprett konto gratis")
-            .accessibilityHint("Har du ikke konto? Gå til registrering.")
         }
     }
 
-    private var noAccountText: some View { Text("Har du ikke konto?").foregroundColor(.white.opacity(0.75)) }
-    private var createAccountText: some View { Text("Opprett konto gratis").foregroundColor(.pbLink).fontWeight(.semibold) }
-
     func login() {
-        guard !licensePlate.isEmpty, !bankIDCode.isEmpty else {
-            errorMessage = "Registreringsnummer og BankID-kode er påkrevd"
+        let mail = email.trimmingCharacters(in: .whitespaces)
+        guard !mail.isEmpty, !password.isEmpty else {
+            errorMessage = "Skriv inn e-post og passord."
             announce(errorMessage)
             return
         }
-        state.userName = "Khadar"
-        state.licensePlate = licensePlate
-        state.isLoggedIn = true
+        busy = true; errorMessage = ""
+        Task {
+            if let error = await state.signIn(email: mail, password: password) {
+                errorMessage = error
+                announce(error)
+            }
+            busy = false
+        }
     }
 }
 
@@ -300,7 +533,9 @@ struct RegisterView: View {
     @State private var email        = ""
     @State private var phone        = ""
     @State private var licensePlate = ""
+    @State private var password     = ""
     @State private var errorMessage = ""
+    @State private var busy = false
 
     var body: some View {
         AuthScreen {
@@ -315,36 +550,97 @@ struct RegisterView: View {
                 PBTextField(label: "Fullt navn", placeholder: "Fornavn og etternavn", text: $fullName,
                             contentType: .name, capitalization: .words)
                 PBTextField(label: "E-post", placeholder: "din@epost.no", text: $email,
-                            keyboard: .emailAddress, contentType: .emailAddress, capitalization: .never)
-                PBTextField(label: "Telefonnummer", placeholder: "+47 000 00 000", text: $phone,
+                            keyboard: .emailAddress, contentType: .username, capitalization: .never)
+                PBTextField(label: "Telefon (valgfritt)", placeholder: "+47 000 00 000", text: $phone,
                             keyboard: .phonePad, contentType: .telephoneNumber)
                 PBTextField(label: "Registreringsnummer", placeholder: "AB 12345", text: $licensePlate,
                             keyboard: .asciiCapable, capitalization: .characters)
+                PBTextField(label: "Passord (minst 8 tegn)", placeholder: "", text: $password,
+                            contentType: .newPassword, secure: true)
                 if !errorMessage.isEmpty { ErrorText(message: errorMessage) }
-                PBPrimaryButton(title: "Opprett konto", action: register)
+                PBPrimaryButton(title: busy ? "Oppretter …" : "Opprett konto", action: register)
+                    .disabled(busy)
+                Text("Ved registrering godtar du personvernerklæringen, som du finner under Profil.")
+                    .font(.pb(.caption)).foregroundColor(.pbSub).multilineTextAlignment(.center)
             }
             .padding(20).background(Color.pbCard).cornerRadius(20).padding(.horizontal, 24)
 
-            Button(action: { state.isNewUser = false }) {
-                Text("Tilbake til innlogging").font(.pb(.footnote)).foregroundColor(.white.opacity(0.75))
-                    .frame(minHeight: 44).padding(.horizontal, 24)
-            }
-            .padding(.top, 12)
+            AuthFooterLink(lead: "Har du konto?", action: "Logg inn") { state.screen = .login }
         }
     }
 
     func register() {
-        guard !fullName.isEmpty, !email.isEmpty, !phone.isEmpty, !licensePlate.isEmpty else {
-            errorMessage = "Alle felt må fylles ut"
-            announce(errorMessage)
-            return
+        let name = fullName.trimmingCharacters(in: .whitespaces)
+        let mail = email.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, !mail.isEmpty, !licensePlate.isEmpty, !password.isEmpty else {
+            return fail("Fyll ut navn, e-post, registreringsnummer og passord.")
         }
-        state.userName      = fullName.components(separatedBy: " ").first ?? fullName
-        state.userEmail     = email
-        state.userPhone     = phone
-        state.licensePlate  = licensePlate
-        state.isNewUser     = false
-        state.isLoggedIn    = true
+        guard Plate.isValid(licensePlate) else { return fail("Ugyldig registreringsnummer. Skriv det som på skiltet, for eksempel AB 12345.") }
+        guard password.count >= 8 else { return fail("Passordet må ha minst 8 tegn.") }
+        busy = true; errorMessage = ""
+        Task {
+            if let error = await state.signUp(email: mail, password: password, fullName: name,
+                                              phone: phone.trimmingCharacters(in: .whitespaces), plate: licensePlate) {
+                fail(error)
+            }
+            busy = false
+        }
+    }
+
+    private func fail(_ message: String) {
+        errorMessage = message
+        announce(message)
+    }
+}
+
+// MARK: - Glemt passord
+struct ForgotPasswordView: View {
+    @ObservedObject var state: AppState
+    @State private var email = ""
+    @State private var errorMessage = ""
+    @State private var sent = false
+    @State private var busy = false
+
+    var body: some View {
+        AuthScreen {
+            VStack(spacing: 10) {
+                AuthLogo(size: 64)
+                Text("Glemt passord").font(.pb(.title2, .bold)).foregroundColor(.white)
+                    .accessibilityAddTraits(.isHeader)
+                Text("Vi sender deg en lenke for å lage nytt passord")
+                    .font(.pb(.footnote)).foregroundColor(.white.opacity(0.75)).multilineTextAlignment(.center)
+            }
+            .padding(.bottom, 24).padding(.horizontal, 24)
+
+            VStack(spacing: 14) {
+                if sent {
+                    NoticeText(message: "Hvis det finnes en konto for \(email), har vi sendt en e-post med lenke. Sjekk også søppelpost.")
+                } else {
+                    PBTextField(label: "E-post", placeholder: "din@epost.no", text: $email,
+                                keyboard: .emailAddress, contentType: .username, capitalization: .never)
+                    if !errorMessage.isEmpty { ErrorText(message: errorMessage) }
+                    PBPrimaryButton(title: busy ? "Sender …" : "Send lenke", action: send).disabled(busy)
+                }
+            }
+            .padding(20).background(Color.pbCard).cornerRadius(20).padding(.horizontal, 24)
+
+            AuthFooterLink(lead: nil, action: "Tilbake til innlogging") { state.screen = .login }
+        }
+    }
+
+    func send() {
+        let mail = email.trimmingCharacters(in: .whitespaces)
+        guard !mail.isEmpty else { errorMessage = "Skriv inn e-postadressen din."; announce(errorMessage); return }
+        busy = true; errorMessage = ""
+        Task {
+            if let error = await state.sendPasswordReset(email: mail) {
+                errorMessage = error; announce(error)
+            } else {
+                email = mail; sent = true
+                announce("E-post med lenke er sendt.")
+            }
+            busy = false
+        }
     }
 }
 
@@ -379,7 +675,6 @@ struct DashboardView: View {
                 .tabItem { Label("Profil", systemImage: "person.fill") }
         }
         .tint(.pbAccent)
-        .task { await state.loadVehicle() }
     }
 }
 
@@ -409,7 +704,7 @@ struct HomeTab: View {
                 VStack(alignment: .leading, spacing: 0) {
                     VStack(alignment: .leading, spacing: 0) {
                         Text("God dag,").font(.pb(.caption)).foregroundColor(.white.opacity(0.75))
-                        Text("\(state.userName) 👋")
+                        Text(state.userName)
                             .font(.pb(.title3, .bold)).foregroundColor(.white)
                     }
                     .accessibilityElement(children: .ignore)
@@ -423,7 +718,7 @@ struct HomeTab: View {
                     layout {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Utestående bøter").font(.pb(.caption)).foregroundColor(.white)
-                            Text("\(totalUnpaid) kr").font(.pb(.title, .heavy)).foregroundColor(.white)
+                            Text(kr(totalUnpaid)).font(.pb(.title, .heavy)).foregroundColor(.white)
                             Text(unpaidCountText).font(.pb(.caption)).foregroundColor(.white)
                         }
                         .accessibilityElement(children: .ignore)
@@ -454,11 +749,29 @@ struct HomeTab: View {
                 VStack(alignment: .leading, spacing: 10) {
                     SectionTitle(text: "Mine bøter")
                         .padding(.top, 16).padding(.horizontal, 16)
+                    if let dataError = state.dataError {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ErrorText(message: dataError)
+                            Button { Task { await state.loadAll() } } label: {
+                                Label("Prøv igjen", systemImage: "arrow.clockwise").font(.pb(.subheadline, .semibold))
+                                    .foregroundColor(.pbAccent).frame(minHeight: 44)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    } else if state.fines.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Du har ingen registrerte bøter.").font(.pb(.subheadline, .medium)).foregroundColor(.pbText)
+                            Text("Bøter på skiltene dine dukker opp her automatisk.").font(.pb(.footnote)).foregroundColor(.pbSub)
+                        }
+                        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.pbCard).cornerRadius(14).padding(.horizontal, 16)
+                    }
                     ForEach(state.fines) { fine in FineCard(fine: fine) }
                     Spacer().frame(height: 8)
                 }
             }
         }
+        .refreshable { await state.loadAll() }
         .navyStatusBarBackground()
     }
 }
@@ -532,6 +845,7 @@ struct FinesTab: View {
                 }
                 .padding(.top, 12)
             }
+            .refreshable { await state.loadAll() }
         }
         .navyStatusBarBackground()
     }
@@ -562,150 +876,299 @@ struct FilterChip: View {
 // MARK: - Tab 2: Profil
 struct ProfileTab: View {
     @ObservedObject var state: AppState
-    @State private var showLogoutConfirm = false
     @ScaledMetric private var avatarSize: CGFloat = 72
 
+    @State private var showEditContact = false
+    @State private var showChangePassword = false
+    @State private var showDeleteAccount = false
+    @State private var showPrivacy = false
+    @State private var showLogoutChoice = false
+    @State private var notice = ""
+    @State private var settingsError = ""
+
     var totalPaid: Int { state.fines.filter { $0.status == .paid }.reduce(0) { $0 + $1.amount } }
-    var totalFines: Int { state.fines.count }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                // Header
-                VStack(spacing: 12) {
-                    ZStack {
-                        Circle()
-                            .fill(LinearGradient(colors: [.pbBlue, .pbBlue2], startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .frame(width: avatarSize, height: avatarSize)
-                        Text(state.userName.prefix(1).uppercased())
-                            .font(.pb(.title, .bold)).foregroundColor(.white)
-                    }
-                    .accessibilityHidden(true)
-                    Text(state.userName).font(.pb(.headline, .bold)).foregroundColor(.white)
-                        .accessibilityAddTraits(.isHeader)
-                    Text(state.userEmail).font(.pb(.footnote)).foregroundColor(.white.opacity(0.75))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 24).padding(.horizontal, 16)
-                .background(Color.pbNavy)
-
+                header
                 VStack(spacing: 16) {
-                    // Stats
                     ViewThatFits {
                         HStack(spacing: 12) { stats }
                         VStack(spacing: 12) { stats }
                     }
                     .padding(.horizontal, 16)
 
+                    if !notice.isEmpty { NoticeText(message: notice).padding(.horizontal, 16) }
+
                     VehicleSection(state: state)
 
                     ProfileSection(title: "Kontaktinfo") {
-                        ProfileRow(icon: "envelope.fill", iconColor: .pbAccent, title: "E-post", value: state.userEmail)
+                        ProfileRow(icon: "person.fill", iconColor: .pbAccent, title: "Navn", value: state.fullName)
                         Divider().padding(.leading, 52)
-                        ProfileRow(icon: "phone.fill", iconColor: .pbAccent, title: "Telefon", value: state.userPhone)
+                        ProfileRow(icon: "envelope.fill", iconColor: .pbAccent, title: "E-post", value: state.email)
+                        Divider().padding(.leading, 52)
+                        ProfileRow(icon: "phone.fill", iconColor: .pbAccent, title: "Telefon", value: state.phone ?? "Ikke oppgitt")
+                        Divider().padding(.leading, 52)
+                        ActionRow(icon: "pencil", title: "Endre navn og telefon") { notice = ""; showEditContact = true }
                     }
 
                     ProfileSection(title: "Innstillinger") {
                         ThemePickerRow()
                         Divider().padding(.leading, 52)
-                        ProfileRow(icon: "bell.fill", iconColor: .pbOrange, title: "Varsler", value: "På")
+                        NotifyToggleRow(state: state, error: $settingsError)
+                        if let role = state.roleLabel {
+                            Divider().padding(.leading, 52)
+                            ProfileRow(icon: "person.badge.shield.checkmark.fill", iconColor: .pbAccent, title: "Kontotype", value: role)
+                        }
+                    }
+                    if !settingsError.isEmpty { ErrorText(message: settingsError).padding(.horizontal, 16) }
+
+                    ProfileSection(title: "Konto og sikkerhet") {
+                        ActionRow(icon: "key.fill", title: "Endre passord") { notice = ""; showChangePassword = true }
                         Divider().padding(.leading, 52)
-                        ProfileRow(icon: "lock.fill", iconColor: .pbGreen, title: "BankID", value: "Aktiv")
+                        ActionRow(icon: "rectangle.portrait.and.arrow.right", title: "Logg ut") { showLogoutChoice = true }
+                        Divider().padding(.leading, 52)
+                        ActionRow(icon: "trash.fill", title: "Slett kontoen min", tint: .pbRed) { showDeleteAccount = true }
                     }
 
-                    // Logg ut
-                    Button(action: { showLogoutConfirm = true }) {
-                        HStack {
-                            Image(systemName: "rectangle.portrait.and.arrow.right")
-                                .foregroundColor(.pbRed).font(.pb(.callout))
-                                .frame(width: 32)
-                                .accessibilityHidden(true)
-                            Text("Logg ut").font(.pb(.subheadline, .medium)).foregroundColor(.pbRed)
-                            Spacer()
+                    ProfileSection(title: "Om") {
+                        ActionRow(icon: "hand.raised.fill", title: "Personvernerklæring") { showPrivacy = true }
+                        if state.isAdmin, let url = URL(string: "\(SupabaseConfig.siteURL)/admin") {
+                            Divider().padding(.leading, 52)
+                            Link(destination: url) {
+                                ActionRowLabel(icon: "shield.lefthalf.filled", title: "Admin (åpnes på nettsiden)", trailing: "arrow.up.right")
+                            }
+                            .accessibilityHint("Åpner admin-siden i Safari")
                         }
-                        .padding(16).frame(minHeight: 44)
-                        .background(Color.pbCard).cornerRadius(14)
-                        .shadow(color: Color.black.opacity(0.06), radius: 4, y: 1)
                     }
-                    .padding(.horizontal, 16)
 
                     Spacer().frame(height: 8)
                 }
                 .padding(.top, 16)
             }
         }
-        .refreshable { await state.loadVehicle() }
+        .refreshable { await state.loadAll() }
         .navyStatusBarBackground()
-        .confirmationDialog("Er du sikker?", isPresented: $showLogoutConfirm, titleVisibility: .visible) {
-            Button("Logg ut", role: .destructive) { state.logout() }
+        .confirmationDialog("Logg ut", isPresented: $showLogoutChoice, titleVisibility: .visible) {
+            Button("Logg ut på denne telefonen") { Task { await state.logout(everywhere: false) } }
+            Button("Logg ut fra alle enheter", role: .destructive) { Task { await state.logout(everywhere: true) } }
             Button("Avbryt", role: .cancel) {}
+        } message: {
+            Text("«Alle enheter» logger deg også ut av nettsiden og andre telefoner.")
         }
+        .sheet(isPresented: $showEditContact) {
+            EditContactSheet(state: state) { notice = "Kontaktinfo er lagret." }
+        }
+        .sheet(isPresented: $showChangePassword) {
+            ChangePasswordSheet(state: state) { notice = "Passordet er endret." }
+        }
+        .sheet(isPresented: $showDeleteAccount) { DeleteAccountSheet(state: state) }
+        .sheet(isPresented: $showPrivacy) { PrivacySheet() }
+    }
+
+    private var header: some View {
+        VStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(LinearGradient(colors: [.pbBlue, .pbBlue2], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: avatarSize, height: avatarSize)
+                Text(state.fullName.prefix(1).uppercased())
+                    .font(.pb(.title, .bold)).foregroundColor(.white)
+            }
+            .accessibilityHidden(true)
+            Text(state.fullName).font(.pb(.headline, .bold)).foregroundColor(.white)
+                .accessibilityAddTraits(.isHeader)
+            Text(state.email).font(.pb(.footnote)).foregroundColor(.white.opacity(0.75))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24).padding(.horizontal, 16)
+        .background(Color.pbNavy)
     }
 
     @ViewBuilder private var stats: some View {
-        StatCard(value: "\(totalFines)", label: "Totalt bøter", spokenValue: "\(totalFines)")
-        StatCard(value: "\(totalPaid) kr", label: "Betalt totalt", spokenValue: "\(totalPaid) kroner")
+        StatCard(value: "\(state.fines.count)", label: "Bøter totalt", spokenValue: "\(state.fines.count)")
+        StatCard(value: kr(totalPaid), label: "Betalt totalt", spokenValue: "\(totalPaid) kroner")
     }
 }
 
-// MARK: - Kjøretøy (fra Statens vegvesen)
-private let longDateFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "nb_NO")
-    formatter.dateStyle = .long
-    return formatter
-}()
+// MARK: - Rader som gjør noe når man trykker
+struct ActionRowLabel: View {
+    let icon: String
+    let title: String
+    var tint: Color = .pbAccent
+    var trailing: String = "chevron.right"
+    @ScaledMetric private var iconBox: CGFloat = 32
 
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8).fill(tint.opacity(0.12)).frame(width: min(iconBox, 48), height: min(iconBox, 48))
+                Image(systemName: icon).foregroundColor(tint).font(.pb(.subheadline))
+            }
+            .accessibilityHidden(true)
+            Text(title).font(.pb(.subheadline, .medium)).foregroundColor(tint == .pbRed ? .pbRed : .pbText)
+                .multilineTextAlignment(.leading)
+            Spacer()
+            Image(systemName: trailing).font(.pb(.footnote, .semibold)).foregroundColor(.pbSub).accessibilityHidden(true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+}
+
+struct ActionRow: View {
+    let icon: String
+    let title: String
+    var tint: Color = .pbAccent
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) { ActionRowLabel(icon: icon, title: title, tint: tint) }
+            .buttonStyle(.plain)
+    }
+}
+
+struct NotifyToggleRow: View {
+    @ObservedObject var state: AppState
+    @Binding var error: String
+    @ScaledMetric private var iconBox: CGFloat = 32
+
+    var body: some View {
+        Toggle(isOn: Binding(
+            get: { state.profile?.notifyEmail ?? true },
+            set: { value in Task { error = await state.setNotify(value) ?? "" } }
+        )) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8).fill(Color.pbOrange.opacity(0.12)).frame(width: min(iconBox, 48), height: min(iconBox, 48))
+                    Image(systemName: "bell.fill").foregroundColor(.pbOrange).font(.pb(.subheadline))
+                }
+                .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("E-postvarsel ved nye bøter").font(.pb(.subheadline)).foregroundColor(.pbText)
+                    Text("Vi sender en e-post når en bot registreres på skiltet ditt.")
+                        .font(.pb(.caption)).foregroundColor(.pbSub)
+                }
+            }
+        }
+        .tint(.pbGreen)
+        .padding(14)
+    }
+}
+
+// MARK: - Kjøretøy
 struct VehicleSection: View {
     @ObservedObject var state: AppState
+    @State private var newPlate = ""
+    @State private var error = ""
+    @State private var busy = false
+    @State private var vehicleToRemove: DBVehicle?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ProfileSection(title: "Kjøretøy") {
-                ProfileRow(icon: "car.fill", iconColor: .pbAccent, title: "Registreringsnummer", value: state.licensePlate)
-
-                switch state.vehicleState {
-                case .idle, .loading:
-                    Divider().padding(.leading, 52)
-                    HStack(spacing: 12) {
-                        ProgressView()
-                        Text("Henter info fra Statens vegvesen …")
-                            .font(.pb(.subheadline)).foregroundColor(.pbSub)
-                    }
-                    .padding(14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityElement(children: .combine)
-
-                case .loaded(let vehicle):
-                    ForEach(rows(for: vehicle), id: \.title) { row in
-                        Divider().padding(.leading, 52)
-                        ProfileRow(icon: row.icon, iconColor: row.iconColor, title: row.title,
-                                   value: row.value, valueColor: row.valueColor)
-                    }
-
-                case .failed(let message):
-                    Divider().padding(.leading, 52)
-                    VStack(alignment: .leading, spacing: 8) {
-                        ErrorText(message: message)
-                        Button {
-                            Task { await state.loadVehicle() }
-                        } label: {
-                            Label("Prøv igjen", systemImage: "arrow.clockwise")
-                                .font(.pb(.subheadline, .semibold))
-                                .foregroundColor(.pbAccent)
-                                .frame(minHeight: 44)
-                        }
-                    }
-                    .padding(.horizontal, 14).padding(.top, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                if state.vehicles.isEmpty {
+                    Text("Ingen kjøretøy lagt til ennå.")
+                        .font(.pb(.subheadline)).foregroundColor(.pbSub)
+                        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
                 }
+                ForEach(state.vehicles) { v in
+                    HStack(spacing: 12) {
+                        ProfileRow(icon: "car.fill", iconColor: .pbAccent, title: Plate.format(v.plate), value: "")
+                        Button {
+                            vehicleToRemove = v
+                        } label: {
+                            Label("Fjern", systemImage: "trash").font(.pb(.subheadline, .semibold))
+                                .foregroundColor(.pbRed).frame(minWidth: 44, minHeight: 44)
+                        }
+                        .padding(.trailing, 14)
+                        .accessibilityLabel("Fjern \(Plate.format(v.plate))")
+                    }
+                    Divider().padding(.leading, 52)
+                }
+
+                vehicleInfo
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .bottom, spacing: 10) {
+                        PBTextField(label: "Legg til kjøretøy", placeholder: "AB 12345", text: $newPlate,
+                                    keyboard: .asciiCapable, capitalization: .characters)
+                        Button(action: add) {
+                            Label("Legg til", systemImage: "plus").font(.pb(.subheadline, .semibold))
+                                .foregroundColor(.white).padding(.horizontal, 14).frame(minHeight: 44)
+                                .background(Color.pbBlue).cornerRadius(10)
+                        }
+                        .disabled(busy)
+                    }
+                    if !error.isEmpty { ErrorText(message: error) }
+                }
+                .padding(14)
             }
 
             if case .loaded = state.vehicleState {
-                Text("Kilde: Statens vegvesen")
+                Text("Kilde: Statens vegvesen (\(state.licensePlate))")
                     .font(.pb(.caption)).foregroundColor(.pbSub)
                     .padding(.horizontal, 20)
             }
+        }
+        .confirmationDialog(
+            "Fjerne \(vehicleToRemove.map { Plate.format($0.plate) } ?? "")?",
+            isPresented: Binding(get: { vehicleToRemove != nil }, set: { if !$0 { vehicleToRemove = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Fjern kjøretøyet", role: .destructive) {
+                guard let v = vehicleToRemove else { return }
+                Task { error = await state.removeVehicle(v) ?? "" }
+            }
+            Button("Avbryt", role: .cancel) {}
+        } message: {
+            Text("Bøter på dette skiltet vises da ikke lenger i appen.")
+        }
+    }
+
+    @ViewBuilder private var vehicleInfo: some View {
+        switch state.vehicleState {
+        case .idle:
+            EmptyView()
+        case .loading:
+            HStack(spacing: 12) {
+                ProgressView()
+                Text("Henter info fra Statens vegvesen …").font(.pb(.subheadline)).foregroundColor(.pbSub)
+            }
+            .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            Divider().padding(.leading, 52)
+        case .loaded(let vehicle):
+            ForEach(rows(for: vehicle), id: \.title) { row in
+                ProfileRow(icon: row.icon, iconColor: row.iconColor, title: row.title, value: row.value, valueColor: row.valueColor)
+                Divider().padding(.leading, 52)
+            }
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 8) {
+                ErrorText(message: message)
+                Button { Task { await state.loadVehicle() } } label: {
+                    Label("Prøv igjen", systemImage: "arrow.clockwise")
+                        .font(.pb(.subheadline, .semibold)).foregroundColor(.pbAccent).frame(minHeight: 44)
+                }
+            }
+            .padding(.horizontal, 14).padding(.top, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Divider().padding(.leading, 52)
+        }
+    }
+
+    private func add() {
+        let plate = newPlate
+        busy = true; error = ""
+        Task {
+            if let message = await state.addVehicle(plate: plate) {
+                error = message; announce(message)
+            } else {
+                newPlate = ""
+                announce("\(Plate.format(plate)) er lagt til.")
+            }
+            busy = false
         }
     }
 
@@ -732,8 +1195,7 @@ struct VehicleSection: View {
             rows.append(Row(icon: "fuelpump.fill", iconColor: .pbAccent, title: "Drivstoff", value: fuel))
         }
         if let date = v.firstRegistered {
-            rows.append(Row(icon: "calendar", iconColor: .pbAccent, title: "Først registrert",
-                            value: longDateFormatter.string(from: date)))
+            rows.append(Row(icon: "calendar", iconColor: .pbAccent, title: "Først registrert", value: longDateFormatter.string(from: date)))
         }
         if let date = v.nextInspection {
             let overdue = v.isInspectionOverdue
@@ -747,6 +1209,164 @@ struct VehicleSection: View {
             rows.append(Row(icon: "doc.text.fill", iconColor: .pbAccent, title: "Status", value: status))
         }
         return rows
+    }
+}
+
+// MARK: - Ark (sheets) for profilhandlinger
+private struct SheetScaffold<Content: View>: View {
+    let title: String
+    @Environment(\.dismiss) private var dismiss
+    @ViewBuilder let content: () -> Content
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) { content() }
+                    .padding(20)
+            }
+            .background(Color.pbBg.ignoresSafeArea())
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Lukk") { dismiss() } }
+            }
+        }
+    }
+}
+
+struct EditContactSheet: View {
+    @ObservedObject var state: AppState
+    let onSaved: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var phone = ""
+    @State private var error = ""
+    @State private var busy = false
+
+    var body: some View {
+        SheetScaffold(title: "Kontaktinfo") {
+            PBTextField(label: "Navn", placeholder: "Fornavn og etternavn", text: $name, contentType: .name, capitalization: .words)
+            PBTextField(label: "Telefon (valgfritt)", placeholder: "+47 000 00 000", text: $phone, keyboard: .phonePad, contentType: .telephoneNumber)
+            Text("E-postadressen (\(state.email)) kan ikke endres her.").font(.pb(.footnote)).foregroundColor(.pbSub)
+            if !error.isEmpty { ErrorText(message: error) }
+            PBPrimaryButton(title: busy ? "Lagrer …" : "Lagre", action: save).disabled(busy)
+        }
+        .onAppear { name = state.fullName; phone = state.phone ?? "" }
+    }
+
+    private func save() {
+        let n = name.trimmingCharacters(in: .whitespaces)
+        guard !n.isEmpty else { error = "Navn kan ikke være tomt."; announce(error); return }
+        busy = true
+        Task {
+            if let message = await state.updateContact(name: n, phone: phone.trimmingCharacters(in: .whitespaces)) {
+                error = message; announce(message)
+            } else {
+                onSaved(); announce("Kontaktinfo er lagret."); dismiss()
+            }
+            busy = false
+        }
+    }
+}
+
+struct ChangePasswordSheet: View {
+    @ObservedObject var state: AppState
+    let onSaved: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var password = ""
+    @State private var repeatPassword = ""
+    @State private var error = ""
+    @State private var busy = false
+
+    var body: some View {
+        SheetScaffold(title: "Endre passord") {
+            PBTextField(label: "Nytt passord (minst 8 tegn)", placeholder: "", text: $password, contentType: .newPassword, secure: true)
+            PBTextField(label: "Gjenta passord", placeholder: "", text: $repeatPassword, contentType: .newPassword, secure: true)
+            if !error.isEmpty { ErrorText(message: error) }
+            PBPrimaryButton(title: busy ? "Lagrer …" : "Lagre passord", action: save).disabled(busy)
+        }
+    }
+
+    private func save() {
+        guard password.count >= 8 else { error = "Passordet må ha minst 8 tegn."; announce(error); return }
+        guard password == repeatPassword else { error = "Passordene er ikke like."; announce(error); return }
+        busy = true
+        Task {
+            if let message = await state.changePassword(password) {
+                error = message; announce(message)
+            } else {
+                onSaved(); announce("Passordet er endret."); dismiss()
+            }
+            busy = false
+        }
+    }
+}
+
+struct DeleteAccountSheet: View {
+    @ObservedObject var state: AppState
+    @Environment(\.dismiss) private var dismiss
+    @State private var confirmText = ""
+    @State private var error = ""
+    @State private var busy = false
+
+    var body: some View {
+        SheetScaffold(title: "Slett konto") {
+            Text("Profilen, kjøretøyene og innloggingen din slettes for godt. Dette kan ikke angres.")
+                .font(.pb(.body)).foregroundColor(.pbText)
+            PBTextField(label: "Skriv SLETT for å bekrefte", placeholder: "SLETT", text: $confirmText, capitalization: .characters)
+            if !error.isEmpty { ErrorText(message: error) }
+            Button(action: delete) {
+                Text(busy ? "Sletter …" : "Slett kontoen for godt")
+                    .font(.pb(.callout, .semibold)).foregroundColor(.pbRed)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(Color.pbRedBg).cornerRadius(12)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.pbRed, lineWidth: 1.5))
+            }
+            .disabled(busy)
+        }
+    }
+
+    private func delete() {
+        guard confirmText.trimmingCharacters(in: .whitespaces).uppercased() == "SLETT" else {
+            error = "Skriv SLETT for å bekrefte."; announce(error); return
+        }
+        busy = true
+        Task {
+            if let message = await state.deleteAccount() {
+                error = message; announce(message); busy = false
+            } else {
+                dismiss()
+            }
+        }
+    }
+}
+
+struct PrivacySheet: View {
+    private let sections: [(String, String)] = [
+        ("Behandlingsansvarlig", "Parkeringsbot er behandlingsansvarlig for personopplysningene i tjenesten. Kontakt: khadar97@hotmail.no."),
+        ("Hva vi lagrer", "Navn, e-post, telefonnummer (valgfritt), registreringsnummer på kjøretøyene dine og informasjon om parkeringsbøter (beløp, sted, dato, status)."),
+        ("Hvorfor", "For å gi deg innlogging og vise bøtene som er registrert på skiltene dine (avtale, GDPR art. 6(1)(b))."),
+        ("Lagring og sikkerhet", "Dataene lagres hos Supabase innenfor EØS og er kryptert. Du ser bare dine egne data."),
+        ("Tredjeparter", "Supabase (database og innlogging), Vercel (nettsiden), Statens vegvesen (vi sender bare registreringsnummeret for å vise kjøretøyinfo) og Resend (e-postvarsler, hvis du har slått dem på)."),
+        ("Dine rettigheter", "Du kan se og endre opplysningene dine under Profil, slå av e-postvarsler og slette kontoen selv. Da slettes profil, kjøretøy og innlogging med en gang."),
+        ("Klage", "Du kan klage til Datatilsynet hvis du mener vi behandler opplysningene dine feil."),
+    ]
+
+    var body: some View {
+        SheetScaffold(title: "Personvern") {
+            Text("Personvernerklæring").font(.pb(.title2, .bold)).foregroundColor(.pbText).accessibilityAddTraits(.isHeader)
+            ForEach(sections, id: \.0) { title, text in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title).font(.pb(.headline)).foregroundColor(.pbText).accessibilityAddTraits(.isHeader)
+                    Text(text).font(.pb(.body)).foregroundColor(.pbLabel)
+                }
+            }
+            if let url = URL(string: "\(SupabaseConfig.siteURL)/personvern") {
+                Link(destination: url) {
+                    Label("Les hele erklæringen på nettsiden", systemImage: "arrow.up.right")
+                        .font(.pb(.subheadline, .semibold)).foregroundColor(.pbAccent).frame(minHeight: 44)
+                }
+            }
+        }
     }
 }
 
@@ -865,12 +1485,12 @@ struct FineCard: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(fine.licensePlate).font(.pb(.subheadline, .bold)).foregroundColor(.pbText)
-                Text(fine.location).font(.pb(.footnote)).foregroundColor(.pbSub)
-                Text(fine.date).font(.pb(.caption)).foregroundColor(.pbSub)
+                Text(fine.location.isEmpty ? "Ukjent sted" : fine.location).font(.pb(.footnote)).foregroundColor(.pbSub)
+                if !fine.date.isEmpty { Text(fine.date).font(.pb(.caption)).foregroundColor(.pbSub) }
             }
             if !typeSize.isAccessibilitySize { Spacer() }
             VStack(alignment: typeSize.isAccessibilitySize ? .leading : .trailing, spacing: 4) {
-                Text("\(fine.amount) kr").font(.pb(.subheadline, .bold)).foregroundColor(fine.status.color)
+                Text(kr(fine.amount)).font(.pb(.subheadline, .bold)).foregroundColor(fine.status.color)
                 Text(fine.status.label)
                     .font(.pb(.caption2, .semibold)).foregroundColor(fine.status.color)
                     .padding(.horizontal, 8).padding(.vertical, 2)

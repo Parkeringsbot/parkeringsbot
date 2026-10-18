@@ -12,6 +12,14 @@ SwiftUI-app (iOS 16+) som deler Supabase-database med nettsiden.
 - Universelt utformet (WCAG 2.1 AA): kontrast, VoiceOver, Dynamic Type, Reduser bevegelse
 - Lys / mørk / system-modus under Profil → Utseende
 
+## Innlogging og data
+- Logger inn mot samme Supabase-database som nettsiden (`SupabaseService.swift`, ingen ekstra pakker).
+- Innloggingen lagres i nøkkelringen (Keychain) og fornyes automatisk.
+- Glemt passord sender en lenke til nettsiden (`/tilbakestill-passord`).
+- Profil: endre navn/telefon, legge til/fjerne kjøretøy, e-postvarsler av/på, endre passord,
+  logg ut / logg ut fra alle enheter, slett konto, personvernerklæring.
+
 ## Ikke ferdig ennå
-- Appen bruker fortsatt testdata for innlogging og bøter – kobling til Supabase gjenstår.
-- Vegvesen-nøkkelen ligger i appen; flytt oppslaget til en server før publisering.
+- Vegvesen-nøkkelen ligger fortsatt i appen. Flytt oppslaget til nettsidens `/api/kjoretoy`
+  når parkeringsbot.app ikke lenger er låst bak Vercel-innlogging.
+- Betaling i appen («Betal alle» er merket «kommer snart»).
