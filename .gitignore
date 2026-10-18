@@ -43,3 +43,7 @@ Thumbs.db
 .c9/
 *.launch
 .settings/
+
+# iOS
+ios/Parkeringsbot/Secrets.swift
+xcuserdata/
