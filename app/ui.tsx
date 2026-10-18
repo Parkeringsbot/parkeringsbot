@@ -25,6 +25,7 @@ const PATHS: Record<string, React.ReactNode> = {
   logout:   <><path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l-5-5 5-5M5 12h11" /></>,
   trash:    <><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></>,
   plus:     <path d="M12 5v14M5 12h14" />,
+  pencil:   <path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4" />,
   half:     <><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" /></>,
   shield:   <path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z" />,
   alert:    <><circle cx="12" cy="12" r="9" /><path d="M12 7v6M12 16.5v.01" /></>,

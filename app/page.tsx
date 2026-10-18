@@ -61,7 +61,7 @@ export default function App() {
     <div className="app">
       <a href="#innhold" className="skip-link">Hopp til innhold</a>
       <main id="innhold">
-        {tab === 'hjem' && <HomeTab name={profile?.full_name || email.split('@')[0]} fines={fines} onShowFines={() => setTab('boter')} />}
+        {tab === 'hjem' && <HomeTab name={(profile?.full_name || email.split('@')[0]).split(' ')[0]} fines={fines} />}
         {tab === 'boter' && <FinesTab fines={fines} />}
         {tab === 'profil' && (
           <ProfileTab
@@ -126,7 +126,7 @@ function LoginScreen({ flash, onDone, onRegister, onForgot }: {
       footer={<>Har du ikke konto? <button type="button" className="link-on-navy" onClick={onRegister}>Opprett konto gratis</button></>}>
       <form onSubmit={submit} noValidate style={{ display: 'contents' }}>
         <Notice message={flash} />
-        <Field label="E-post" type="email" autoComplete="email" value={mail} onChange={(e) => setMail(e.target.value)} placeholder="din@epost.no" required />
+        <Field label="E-post" type="email" autoComplete="email" value={mail} onChange={(e) => setMail(e.target.value)} placeholder="ola.nordmann@epost.no" required />
         <Field label="Passord" type="password" autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)} required />
         <ErrorText message={error} />
         <button className="btn btn-primary btn-block" type="submit" disabled={busy}>{busy ? 'Logger inn …' : 'Logg inn'}</button>
@@ -171,14 +171,14 @@ function RegisterScreen({ onDone, onBack, onNeedsConfirm }: {
     <AuthShell title="Opprett konto" lead="Kom i gang på under ett minutt"
       footer={<>Har du konto? <button type="button" className="link-on-navy" onClick={onBack}>Logg inn</button></>}>
       <form onSubmit={submit} noValidate style={{ display: 'contents' }}>
-        <Field label="Fullt navn" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} required />
-        <Field label="E-post" type="email" autoComplete="email" value={mail} onChange={(e) => setMail(e.target.value)} required />
-        <Field label="Telefon" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} hint="Valgfritt" />
+        <Field label="Fullt navn" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ola Nordmann" required />
+        <Field label="E-post" type="email" autoComplete="email" value={mail} onChange={(e) => setMail(e.target.value)} placeholder="ola.nordmann@epost.no" required />
+        <Field label="Telefon (valgfritt)" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+47 123 45 678" />
         <Field label="Registreringsnummer" autoCapitalize="characters" autoComplete="off" value={plate} onChange={(e) => setPlate(e.target.value)} placeholder="AB 12345" required />
-        <Field label="Passord" type="password" autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} hint="Minst 8 tegn" required />
+        <Field label="Passord (minst 8 tegn)" type="password" autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} required />
         <ErrorText message={error} />
         <button className="btn btn-primary btn-block" type="submit" disabled={busy}>{busy ? 'Oppretter …' : 'Opprett konto'}</button>
-        <p className="fine-print">Ved registrering godtar du <a href="/personvern">personvernerklæringen</a>.</p>
+        <p className="fine-print">Ved registrering godtar du <a href="/personvern">personvernerklæringen</a>, som du også finner under Profil.</p>
       </form>
     </AuthShell>
   )
@@ -207,7 +207,7 @@ function ForgotScreen({ onBack }: { onBack: () => void }) {
         <Notice message={`Hvis det finnes en konto for ${mail.trim()}, har vi sendt en e-post med lenke. Sjekk også søppelpost.`} />
       ) : (
         <form onSubmit={submit} noValidate style={{ display: 'contents' }}>
-          <Field label="E-post" type="email" autoComplete="email" value={mail} onChange={(e) => setMail(e.target.value)} required />
+          <Field label="E-post" type="email" autoComplete="email" value={mail} onChange={(e) => setMail(e.target.value)} placeholder="ola.nordmann@epost.no" required />
           <ErrorText message={error} />
           <button className="btn btn-primary btn-block" type="submit" disabled={busy}>{busy ? 'Sender …' : 'Send lenke'}</button>
         </form>
@@ -217,7 +217,7 @@ function ForgotScreen({ onBack }: { onBack: () => void }) {
 }
 
 /* ════════════════════ Hjem ════════════════════ */
-function HomeTab({ name, fines, onShowFines }: { name: string; fines: Fine[]; onShowFines: () => void }) {
+function HomeTab({ name, fines }: { name: string; fines: Fine[] }) {
   const unpaid = fines.filter((f) => f.status === 'ubetalt')
   const total = unpaid.reduce((s, f) => s + f.amount, 0)
   const countText = unpaid.length === 1 ? '1 ubetalt bot' : `${unpaid.length} ubetalte bøter`
@@ -232,7 +232,10 @@ function HomeTab({ name, fines, onShowFines }: { name: string; fines: Fine[]; on
             <p className="amount">{kr(total)}</p>
             <p style={{ fontSize: '0.875rem' }}>{countText}</p>
           </div>
-          <button type="button" className="btn-on-blue" onClick={onShowFines}>Se bøtene</button>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
+            <button type="button" className="btn-on-blue" disabled aria-describedby="betal-snart" style={{ opacity: 0.85 }}>Betal alle</button>
+            <span id="betal-snart" style={{ fontSize: '0.75rem' }}>Kommer snart</span>
+          </div>
         </section>
       </header>
       <section className="section" aria-labelledby="mine-boter">
@@ -248,17 +251,18 @@ function FinesTab({ fines }: { fines: Fine[] }) {
   const [filter, setFilter] = useState<FineStatus | 'alle'>('alle')
   const shown = filter === 'alle' ? fines : fines.filter((f) => f.status === filter)
   const count = (s: FineStatus) => fines.filter((f) => f.status === s).length
-  const chips: [FineStatus | 'alle', string][] = [
-    ['alle', `Alle (${fines.length})`], ['ubetalt', `Ubetalt (${count('ubetalt')})`],
-    ['pending', `Under behandling (${count('pending')})`], ['betalt', `Betalt (${count('betalt')})`],
+  const chips: [FineStatus | 'alle', string, number][] = [
+    ['alle', 'Alle', fines.length], ['ubetalt', 'Ubetalt', count('ubetalt')],
+    ['pending', 'Under behandling', count('pending')], ['betalt', 'Betalt', count('betalt')],
   ]
   return (
     <>
       <header className="hero">
         <h1>Mine bøter</h1>
         <div className="chips" role="group" aria-label="Filtrer bøter">
-          {chips.map(([key, label]) => (
-            <button key={key} type="button" className="chip" aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}</button>
+          {chips.map(([key, label, n]) => (
+            <button key={key} type="button" className="chip" aria-pressed={filter === key} onClick={() => setFilter(key)}
+              aria-label={`${label}, ${n} ${n === 1 ? 'bot' : 'bøter'}`}>{label}</button>
           ))}
         </div>
       </header>
@@ -326,9 +330,6 @@ function ProfileTab({ userId, email, profile, vehicles, fines, onProfileChange, 
         <div className="avatar" aria-hidden="true">{name.charAt(0).toUpperCase()}</div>
         <h1>{name}</h1>
         <p className="muted">{email}</p>
-        {profile && profile.role !== 'privat' && (
-          <p className="muted" style={{ marginTop: '0.25rem' }}>Konto: {profile.role === 'admin' ? 'Administrator' : 'Bedrift'}</p>
-        )}
       </header>
 
       <div className="section">
@@ -341,13 +342,20 @@ function ProfileTab({ userId, email, profile, vehicles, fines, onProfileChange, 
       <VehicleSection userId={userId} vehicles={vehicles} onChange={onVehiclesChange} />
       <ContactSection userId={userId} email={email} profile={profile} onSaved={onProfileChange} />
       <SettingsSection userId={userId} profile={profile} onSaved={onProfileChange} />
-      {profile?.role === 'admin' && (
-        <div className="section">
-          <a className="btn btn-secondary btn-block" href="/admin"><Icon name="shield" /> Åpne admin</a>
-        </div>
-      )}
       <SecuritySection onLoggedOut={onLoggedOut} />
-      <div className="section"><a href="/personvern" className="btn btn-quiet">Personvernerklæring</a></div>
+      <section className="section" aria-labelledby="om">
+        <h2 id="om" className="section-title">Om</h2>
+        <div className="card list">
+          <a href="/personvern" className="list-row action-row">
+            <span className="row-icon"><Icon name="shield" size={18} /></span><span className="grow">Personvernerklæring</span><Icon name="arrow" size={18} />
+          </a>
+          {profile?.role === 'admin' && (
+            <a href="/admin" className="list-row action-row">
+              <span className="row-icon"><Icon name="lock" size={18} /></span><span className="grow">Admin</span><Icon name="arrow" size={18} />
+            </a>
+          )}
+        </div>
+      </section>
     </>
   )
 }
@@ -458,21 +466,21 @@ function ContactSection({ userId, email, profile, onSaved }: { userId: string; e
   return (
     <section className="section" aria-labelledby="kontakt">
       <h2 id="kontakt" className="section-title">Kontaktinfo</h2>
+      <Notice message={saved} />
       <div className="card">
         {!editing ? (
           <div className="list">
             <div className="list-row"><span className="row-icon"><Icon name="user" size={18} /></span><span className="grow">Navn</span><span className="value">{profile?.full_name || '–'}</span></div>
             <div className="list-row"><span className="row-icon"><Icon name="mail" size={18} /></span><span className="grow">E-post</span><span className="value">{email}</span></div>
             <div className="list-row"><span className="row-icon"><Icon name="phone" size={18} /></span><span className="grow">Telefon</span><span className="value">{profile?.phone || 'Ikke oppgitt'}</span></div>
-            <div className="list-row">
-              <Notice message={saved} />
-              <button type="button" className="btn btn-secondary btn-small" onClick={() => { setSaved(''); setName(profile?.full_name || ''); setPhone(profile?.phone || ''); setEditing(true) }}>Endre</button>
-            </div>
+            <button type="button" className="list-row action-row" onClick={() => { setSaved(''); setName(profile?.full_name || ''); setPhone(profile?.phone || ''); setEditing(true) }}>
+              <span className="row-icon"><Icon name="pencil" size={18} /></span><span className="grow">Endre navn og telefon</span><Icon name="arrow" size={18} />
+            </button>
           </div>
         ) : (
           <form onSubmit={save} className="card-pad" noValidate style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-            <Field label="Navn" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
-            <Field label="Telefon" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} hint="Valgfritt" />
+            <Field label="Navn" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ola Nordmann" />
+            <Field label="Telefon (valgfritt)" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+47 123 45 678" />
             <p className="hint" style={{ fontSize: '0.875rem', color: 'var(--sub)' }}>E-postadressen ({email}) kan ikke endres her.</p>
             <ErrorText message={error} />
             <div className="row">
@@ -516,6 +524,13 @@ function SettingsSection({ userId, profile, onSaved }: { userId: string; profile
             <span className="track" aria-hidden="true" />
           </span>
         </div>
+        {profile && profile.role !== 'privat' && (
+          <div className="list-row">
+            <span className="row-icon"><Icon name="user" size={18} /></span>
+            <span className="grow">Kontotype</span>
+            <span className="value">{profile.role === 'admin' ? 'Administrator' : 'Bedrift'}</span>
+          </div>
+        )}
         {error && <div className="list-row"><ErrorText message={error} /></div>}
       </div>
     </section>
@@ -525,21 +540,24 @@ function SettingsSection({ userId, profile, onSaved }: { userId: string; profile
 function SecuritySection({ onLoggedOut }: { onLoggedOut: (msg?: string) => void }) {
   const [changing, setChanging] = useState(false)
   const [pass, setPass] = useState('')
+  const [pass2, setPass2] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
   const dialogRef = useRef<HTMLDialogElement>(null)
+  const logoutRef = useRef<HTMLDialogElement>(null)
   const [confirmText, setConfirmText] = useState('')
   const [deleteError, setDeleteError] = useState('')
 
   async function savePassword(e: React.FormEvent) {
     e.preventDefault()
     if (pass.length < 8) return setError('Passordet må ha minst 8 tegn.')
+    if (pass !== pass2) return setError('Passordene er ikke like.')
     setBusy(true); setError('')
     const { error } = await updatePassword(pass)
     setBusy(false)
     if (error) return setError(friendlyError(error.message))
-    setPass(''); setChanging(false); setNotice('Passordet er endret.')
+    setPass(''); setPass2(''); setChanging(false); setNotice('Passordet er endret.')
   }
 
   async function logout(everywhere: boolean) {
@@ -563,12 +581,13 @@ function SecuritySection({ onLoggedOut }: { onLoggedOut: (msg?: string) => void 
       <Notice message={notice} />
       <div className="card list">
         {!changing ? (
-          <button type="button" className="list-row btn-quiet" style={{ width: '100%', textAlign: 'left' }} onClick={() => { setNotice(''); setChanging(true) }}>
+          <button type="button" className="list-row action-row" onClick={() => { setNotice(''); setChanging(true) }}>
             <span className="row-icon"><Icon name="lock" size={18} /></span><span className="grow">Endre passord</span><Icon name="arrow" size={18} />
           </button>
         ) : (
           <form onSubmit={savePassword} className="card-pad" noValidate style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
-            <Field label="Nytt passord" type="password" autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} hint="Minst 8 tegn" />
+            <Field label="Nytt passord (minst 8 tegn)" type="password" autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} />
+            <Field label="Gjenta passord" type="password" autoComplete="new-password" value={pass2} onChange={(e) => setPass2(e.target.value)} />
             <ErrorText message={error} />
             <div className="row">
               <button className="btn btn-primary" type="submit" disabled={busy}>Lagre passord</button>
@@ -576,24 +595,30 @@ function SecuritySection({ onLoggedOut }: { onLoggedOut: (msg?: string) => void 
             </div>
           </form>
         )}
-        <button type="button" className="list-row btn-quiet" style={{ width: '100%', textAlign: 'left' }} onClick={() => logout(false)}>
-          <span className="row-icon"><Icon name="logout" size={18} /></span><span className="grow">Logg ut</span>
+        <button type="button" className="list-row action-row" onClick={() => logoutRef.current?.showModal()}>
+          <span className="row-icon"><Icon name="logout" size={18} /></span><span className="grow">Logg ut</span><Icon name="arrow" size={18} />
         </button>
-        <button type="button" className="list-row btn-quiet" style={{ width: '100%', textAlign: 'left' }} onClick={() => logout(true)}>
-          <span className="row-icon"><Icon name="logout" size={18} /></span>
-          <span className="grow">Logg ut fra alle enheter<span style={{ display: 'block', fontSize: '0.875rem', color: 'var(--sub)' }}>Også på telefonen og andre nettlesere</span></span>
+        <button type="button" className="list-row action-row danger" onClick={() => { setConfirmText(''); setDeleteError(''); dialogRef.current?.showModal() }}>
+          <span className="row-icon"><Icon name="trash" size={18} /></span><span className="grow">Slett kontoen min</span><Icon name="arrow" size={18} />
         </button>
       </div>
-      <button type="button" className="btn btn-danger btn-block" onClick={() => { setConfirmText(''); setDeleteError(''); dialogRef.current?.showModal() }}>
-        <Icon name="trash" size={18} /> Slett kontoen min
-      </button>
+
+      <dialog ref={logoutRef} aria-labelledby="logg-ut-tittel" aria-describedby="logg-ut-tekst">
+        <h2 id="logg-ut-tittel">Logg ut</h2>
+        <p id="logg-ut-tekst" style={{ marginBottom: '1rem' }}>«Alle enheter» logger deg også ut av appen og andre nettlesere.</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <button type="button" className="btn btn-secondary" onClick={() => { logoutRef.current?.close(); logout(false) }}>Logg ut på denne enheten</button>
+          <button type="button" className="btn btn-danger" onClick={() => { logoutRef.current?.close(); logout(true) }}>Logg ut fra alle enheter</button>
+          <button type="button" className="btn btn-quiet" onClick={() => logoutRef.current?.close()}>Avbryt</button>
+        </div>
+      </dialog>
 
       <dialog ref={dialogRef} aria-labelledby="slett-tittel" aria-describedby="slett-tekst">
         <h2 id="slett-tittel">Slette kontoen?</h2>
         <p id="slett-tekst" style={{ marginBottom: '1rem' }}>
           Profilen, kjøretøyene og innloggingen din slettes for godt. Dette kan ikke angres.
         </p>
-        <Field label="Skriv SLETT for å bekrefte" autoComplete="off" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} />
+        <Field label="Skriv SLETT for å bekrefte" autoComplete="off" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="SLETT" />
         <div style={{ marginTop: '0.75rem' }}><ErrorText message={deleteError} /></div>
         <div className="row" style={{ marginTop: '1rem' }}>
           <button type="button" className="btn btn-danger" onClick={confirmDelete} disabled={busy}>{busy ? 'Sletter …' : 'Slett for godt'}</button>

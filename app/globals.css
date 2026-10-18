@@ -286,3 +286,10 @@ td .select { min-width: 9rem; }
   .fine-side { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; }
 }
 .fine-extra strong.s-ubetalt { color: var(--red); }
+
+/* Rader som gjør noe når man trykker (som i appen) */
+.action-row { width: 100%; text-align: left; color: var(--text); text-decoration: none; font-weight: 500; min-height: 2.75rem; }
+.action-row:hover { background: var(--accent-soft); }
+.action-row > svg { color: var(--sub); }
+.action-row.danger, .action-row.danger .grow { color: var(--red); }
+.action-row.danger .row-icon { background: var(--red-bg); color: var(--red); }

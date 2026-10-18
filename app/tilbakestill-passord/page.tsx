@@ -56,7 +56,7 @@ export default function ResetPassword() {
           </>
         ) : (
           <form onSubmit={submit} noValidate style={{ display: 'contents' }}>
-            <Field label="Nytt passord" type="password" autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} hint="Minst 8 tegn" />
+            <Field label="Nytt passord (minst 8 tegn)" type="password" autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} />
             <Field label="Gjenta passord" type="password" autoComplete="new-password" value={pass2} onChange={(e) => setPass2(e.target.value)} />
             <ErrorText message={error} />
             <button className="btn btn-primary btn-block" type="submit" disabled={busy}>{busy ? 'Lagrer …' : 'Lagre nytt passord'}</button>
