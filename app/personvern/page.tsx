@@ -14,7 +14,7 @@ export default function Personvern() {
         <h2>1. Behandlingsansvarlig</h2>
         <p>
           Parkeringsbot er behandlingsansvarlig for personopplysninger som behandles i denne tjenesten.
-          Kontakt oss på <a href="mailto:khadar97@hotmail.no">khadar97@hotmail.no</a> ved spørsmål om personvern.
+          Kontakt oss på <a href="mailto:parkeringsbot@outlook.com">parkeringsbot@outlook.com</a> ved spørsmål om personvern.
         </p>
       </section>
 
@@ -84,7 +84,7 @@ export default function Personvern() {
           <li><strong>Innsigelse</strong> – protestere mot behandling basert på berettiget interesse</li>
         </ul>
         <p>
-          Send forespørsel til <a href="mailto:khadar97@hotmail.no">khadar97@hotmail.no</a>.
+          Send forespørsel til <a href="mailto:parkeringsbot@outlook.com">parkeringsbot@outlook.com</a>.
           Slettingsforespørsler behandles innen 30 dager.
         </p>
       </section>
@@ -121,7 +121,7 @@ export default function Personvern() {
         <h2>10. Kontakt</h2>
         <p>
           <strong>Parkeringsbot</strong><br />
-          E-post: <a href="mailto:khadar97@hotmail.no">khadar97@hotmail.no</a>
+          E-post: <a href="mailto:parkeringsbot@outlook.com">parkeringsbot@outlook.com</a>
         </p>
       </section>
 

@@ -1346,7 +1346,7 @@ struct DeleteAccountSheet: View {
 
 struct PrivacySheet: View {
     private let sections: [(String, String)] = [
-        ("Behandlingsansvarlig", "Parkeringsbot er behandlingsansvarlig for personopplysningene i tjenesten. Kontakt: khadar97@hotmail.no."),
+        ("Behandlingsansvarlig", "Parkeringsbot er behandlingsansvarlig for personopplysningene i tjenesten. Kontakt: parkeringsbot@outlook.com."),
         ("Hva vi lagrer", "Navn, e-post, telefonnummer (valgfritt), registreringsnummer på kjøretøyene dine og informasjon om parkeringsbøter (beløp, sted, dato, status)."),
         ("Hvorfor", "For å gi deg innlogging og vise bøtene som er registrert på skiltene dine (avtale, GDPR art. 6(1)(b))."),
         ("Lagring og sikkerhet", "Dataene lagres hos Supabase innenfor EØS og er kryptert. Du ser bare dine egne data."),
